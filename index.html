@@ -69,11 +69,11 @@
         }
 
         .app {
-            max-width: 500px;
+            max-width: 1100px;
             margin: 0 auto;
             width: 100%;
             padding: 20px;
-            padding-bottom: 100px;
+            transition: max-width 0.3s ease;
         }
 
         /* --- Custom Scrollbar --- */
@@ -149,6 +149,8 @@
         .kiosk-panel {
             text-align: center;
             position: relative;
+            max-width: 500px;
+            margin: 0 auto 24px;
         }
 
         .live-clock {
@@ -384,43 +386,6 @@
             table td[data-label="Actions"]::before { display: none; }
         }
 
-        /* --- Bottom Nav --- */
-        .bottom-nav {
-            position: fixed;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            width: calc(100% - 40px);
-            max-width: 460px;
-            background: rgba(15, 23, 42, 0.8);
-            backdrop-filter: blur(20px);
-            -webkit-backdrop-filter: blur(20px);
-            border: 1px solid var(--border-glass);
-            display: flex;
-            justify-content: space-around;
-            padding: 12px;
-            border-radius: 30px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
-            z-index: 1000;
-        }
-
-        .nav-item {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 4px;
-            color: var(--text-dim);
-            font-size: 0.65rem;
-            font-weight: 700;
-            cursor: pointer;
-            transition: all 0.3s;
-            width: 60px;
-        }
-
-        .nav-item.active { color: white; }
-        .nav-icon { font-size: 1.25rem; transition: transform 0.3s; }
-        .nav-item.active .nav-icon { transform: translateY(-4px) scale(1.2); }
-        
         .nav-icon-main {
             background: var(--primary);
             width: 50px;
@@ -435,8 +400,6 @@
             border: 4px solid var(--bg-dark);
             transition: all 0.3s;
         }
-        
-        .nav-item.active .nav-icon-main { transform: scale(1.1) translateY(-5px); }
 
         /* --- Toast System --- */
         #toast-container {
@@ -683,30 +646,6 @@
         </div>
     </div>
 
-    <!-- Bottom Navigation (Mobile) -->
-    <div class="bottom-nav">
-        <div class="nav-item active" id="navKiosk">
-            <span class="nav-icon">🔑</span>
-            <span>Kiosk</span>
-        </div>
-        <div class="nav-item" id="navStudents">
-            <span class="nav-icon">👥</span>
-            <span>Students</span>
-        </div>
-        <div class="nav-item" id="navAttendance">
-            <div class="nav-icon-main">📅</div>
-            <span>Logs</span>
-        </div>
-        <div class="nav-item" id="navSummary">
-            <span class="nav-icon">📊</span>
-            <span>Reports</span>
-        </div>
-        <div class="nav-item" id="navLogout">
-            <span class="nav-icon">🚪</span>
-            <span>Exit</span>
-        </div>
-    </div>
-
     <!-- Sidebar (Desktop/Tablet) -->
     <div id="sidebarOverlay" class="overlay"></div>
     <div id="sidebar" class="sidebar">
@@ -725,7 +664,9 @@
                 <span>📥</span> Restore (Import All)
                 <input type="file" id="restoreFile" accept=".json" hidden onchange="restoreData(this)">
             </label>
-            <div onclick="resetDatabase()" class="sidebar-menu-item" style="color: var(--danger); margin-top: 20px; border: 1px solid rgba(239, 68, 68, 0.2);"><span>⚠️</span> Reset Database</div>
+            <div onclick="resetDatabase()" class="sidebar-menu-item" style="color: var(--danger); margin-top: 10px; border: 1px solid rgba(239, 68, 68, 0.1);"><span>⚠️</span> Reset Database</div>
+            <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 12px 0;">
+            <div id="menuExitAdmin" class="sidebar-menu-item"><span>🚪</span> Exit Admin Panel</div>
         </div>
     </div>
 
@@ -1560,37 +1501,6 @@
             updateNavActive();
             render();
         };
-        document.getElementById('navStudents').onclick = () => {
-            if (checkAdmin()) {
-                state.ui.currentMode = 'admin';
-                state.ui.adminSection = 'students';
-                updateNavActive();
-                render();
-            }
-        };
-        document.getElementById('navAttendance').onclick = () => {
-            if (checkAdmin()) {
-                state.ui.currentMode = 'admin';
-                state.ui.adminSection = 'attendance';
-                updateNavActive();
-                render();
-            }
-        };
-        document.getElementById('navSummary').onclick = () => {
-            if (checkAdmin()) {
-                state.ui.currentMode = 'admin';
-                state.ui.adminSection = 'reports';
-                updateNavActive();
-                render();
-            }
-        };
-        document.getElementById('navLogout').onclick = () => {
-            state.ui.currentMode = 'kiosk';
-            updateNavActive();
-            render();
-            showToast('Logged Out', 'primary');
-        };
-
         // Kiosk Buttons
         document.getElementById('kioskSignInBtn').onclick = () => processAttendance('in');
         document.getElementById('kioskSignOutBtn').onclick = () => processAttendance('out');
@@ -1599,6 +1509,13 @@
         document.getElementById('menuStudentManagement').onclick = () => { state.ui.adminSection = 'students'; render(); closeSidebar(); updateNavActive(); };
         document.getElementById('menuDailyAttendance').onclick = () => { state.ui.adminSection = 'attendance'; render(); closeSidebar(); updateNavActive(); };
         document.getElementById('menuSummary').onclick = () => { state.ui.adminSection = 'reports'; render(); closeSidebar(); updateNavActive(); };
+        document.getElementById('menuExitAdmin').onclick = () => { 
+            state.ui.currentMode = 'kiosk'; 
+            updateNavActive(); 
+            render(); 
+            closeSidebar();
+            showToast('Exited Admin Panel', 'primary'); 
+        };
         document.getElementById('themeToggleBtn').onclick = () => { toggleTheme(); closeSidebar(); showToast(`Switched to ${state.config.theme} mode`, 'success'); };
 
         // QR Scanner Implementation
