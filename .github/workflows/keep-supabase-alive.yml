@@ -1,24 +1,16 @@
-# .github/workflows/keep-supabase-alive.yml
 name: Keep Supabase Alive
 
 on:
   schedule:
-    # ┌───────────── minute (0 - 59)
-    # │ ┌───────────── hour (0 - 23)
-    # │ │ ┌───────────── day of the month (1 - 31)
-    # │ │ │ ┌───────────── month (1 - 12)
-    # │ │ │ │ ┌───────────── day of the week (0 - 6)
-    # │ │ │ │ │
-    # │ │ │ │ │
-    # * * * * *
-    - cron: '30 13 * * 1,4' # Runs at 13:30 UTC (2:30 PM WAT) every Monday and Thursday
-  workflow_dispatch:          # This line lets you manually run the action from the GitHub UI
+    # Runs at 13:30 UTC (2:30 PM WAT) every Monday and Thursday
+    - cron: '30 13 * * 1,4'
+  workflow_dispatch:   # Allows you to manually trigger from the Actions tab
 
 jobs:
   ping-supabase:
     runs-on: ubuntu-latest
     steps:
-      - name: Send GET request to Supabase Auth health endpoint
+      - name: Ping Supabase Auth health endpoint
         run: |
-          curl -X GET "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/auth/v1/health" \
-          -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}"
+          curl -v -X GET "https://${{ secrets.SUPABASE_PROJECT_ID }}.supabase.co/auth/v1/health" \
+            -H "apikey: ${{ secrets.SUPABASE_ANON_KEY }}"
