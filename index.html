@@ -1055,6 +1055,16 @@
         updateCodeDisplay();
     }
 
+    window.handleSearch = (val) => {
+        state.ui.searchQuery = val;
+        renderAdmin();
+        const input = document.getElementById('studentSearchInput');
+        if (input) {
+            input.focus();
+            input.setSelectionRange(val.length, val.length);
+        }
+    };
+
     function updateCodeDisplay() {
         const dots = document.querySelectorAll('.code-dot');
         dots.forEach((dot, i) => {
@@ -1208,7 +1218,7 @@
                     </div>
                 </div>
                 <div class="action-bar" style="display: flex; gap: 10px; flex-wrap: wrap;">
-                    <input type="text" class="search-input" style="flex: 1; min-width: 200px;" placeholder="Search names or codes..." value="${state.ui.searchQuery}" oninput="state.ui.searchQuery = this.value; renderAdmin()">
+                    <input type="text" id="studentSearchInput" class="search-input" style="flex: 1; min-width: 200px;" placeholder="Search names or codes..." value="${state.ui.searchQuery}" oninput="handleSearch(this.value)">
                     
                     <select class="search-input" style="flex: 1; min-width: 150px;" onchange="state.ui.filterClass = this.value; renderAdmin()">
                         <option value="all">All Classes</option>
