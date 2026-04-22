@@ -31,6 +31,7 @@
             --success: #10b981;
             --warning: #f59e0b;
             --radius-lg: 24px;
+            --secondary: #0f172a;
             --shadow-premium: 0 20px 50px -12px rgba(0, 0, 0, 0.5);
             
             --bg-body: var(--bg-dark);
@@ -250,35 +251,36 @@
 
         /* --- Ultra-Mobile Kiosk Fix --- */
         @media (max-width: 430px) {
-            .app { padding: 15px; }
-            .kiosk-panel { padding: 20px 10px; min-height: auto; }
-            .live-clock { font-size: 2.8rem; margin-bottom: -5px; }
-            .live-date { font-size: 0.75rem; margin-bottom: 10px; }
-            .code-display { gap: 10px; margin-bottom: 15px; }
-            .code-dot { width: 12px; height: 12px; }
+            .app { padding: 10px; padding-bottom: 80px; }
+            .kiosk-panel { padding: 15px 5px; min-height: auto; }
+            .live-clock { font-size: 2.2rem; margin-bottom: -2px; }
+            .live-date { display: none; } /* Hide date to save space */
+            .code-display { gap: 8px; margin-bottom: 12px; }
+            .code-dot { width: 10px; height: 10px; }
             
             .numeric-keypad { 
-                gap: 12px; 
-                max-width: 260px; 
-                margin-bottom: 15px;
+                gap: 8px; 
+                max-width: 240px; 
+                margin-bottom: 12px;
             }
             .keypad-btn { 
-                font-size: 1.4rem; 
-                padding: 10px;
+                font-size: 1.2rem; 
+                padding: 5px;
             }
-            .keypad-btn.special { font-size: 1rem; }
+            .keypad-btn.special { font-size: 0.9rem; }
             
             .kiosk-actions {
                 grid-template-columns: 1fr 1fr;
-                gap: 10px;
-                margin-top: 15px;
+                gap: 8px;
+                margin-top: 10px;
             }
             .kiosk-actions .btn-scan {
                 grid-column: span 2;
                 order: -1;
-                padding: 14px;
+                padding: 12px;
+                font-size: 0.8rem;
             }
-            .btn { padding: 14px; font-size: 0.85rem; }
+            .btn { padding: 12px; font-size: 0.8rem; }
         }
 
         .btn-success {
@@ -447,8 +449,8 @@
         }
 
         .toast {
-            background: rgba(255, 255, 255, 0.95);
-            color: var(--secondary);
+            background: #ffffff;
+            color: #0f172a;
             padding: 16px 20px;
             border-radius: 20px;
             margin-bottom: 10px;
@@ -1519,13 +1521,25 @@
                 (decodedText) => {
                     // Success
                     vibrate(200);
+                    
+                    // Logic to toggle In/Out
+                    const today = new Date().toISOString().split('T')[0];
+                    const student = state.students.find(s => s.code === decodedText);
+                    
                     state.ui.kioskCode = decodedText;
                     updateCodeDisplay();
                     stopScanner();
-                    // Auto-process as 'in' or just let user tap? 
-                    // Let's auto-process if 4 digits
-                    if (decodedText.length === 4) {
-                        processAttendance('in');
+
+                    if (student) {
+                        const record = state.attendance[today]?.[student.id];
+                        // If already in but not out, sign them out. Else sign in.
+                        if (record && record.in && !record.out) {
+                            processAttendance('out');
+                        } else {
+                            processAttendance('in');
+                        }
+                    } else {
+                        showToast('Invalid Code Scanned', 'danger');
                     }
                 }
             ).catch(err => {
