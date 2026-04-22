@@ -12,7 +12,26 @@
     <title>Attendance | Filter by Class | Kiosk + Admin</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+
     <script>
+        // --- Firebase Configuration ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBtmkT8HR8Nabiht5eXfnWfDEHGrtI4HmA",
+            authDomain: "schoolattendance-12e38.firebaseapp.com",
+            projectId: "schoolattendance-12e38",
+            storageBucket: "schoolattendance-12e38.firebasestorage.app",
+            messagingSenderId: "68422984776",
+            appId: "1:68422984776:web:6059946d4c7cbb4747647d",
+            measurementId: "G-JM0YBXYE9Y"
+        };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.firestore();
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed', err));
@@ -708,10 +727,14 @@
     }
 
     // --- Core Functions ---
-    function init() {
+    async function init() {
         loadData();
         startClock();
         render();
+        
+        // Connect to Cloud (real-time sync)
+        await syncAllData();
+
         setupEventListeners();
         document.body.classList.toggle('light-theme', state.config.theme === 'light');
     }
@@ -738,12 +761,77 @@
         sortStudents();
     }
 
-    function saveData() {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
-            students: state.students,
-            attendance: state.attendance,
-            config: state.config
-        }));
+    // --- Persistence (Firestore + Local Backup) ---
+    async function saveData() {
+        // We still save a local copy for offline performance
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        
+        // Sync to Firestore (Selective updates to save bandwidth)
+        try {
+            // Update Students
+            await db.collection('config').doc('students').set({ list: state.students });
+            
+            // Update Configuration
+            await db.collection('config').doc('settings').set(state.config);
+            
+            // Update Today's Attendance
+            const today = new Date().toISOString().split('T')[0];
+            if (state.attendance[today]) {
+                await db.collection('attendance').doc(today).set(state.attendance[today]);
+            }
+        } catch (e) {
+            console.warn("Cloud sync failed (offline?):", e);
+        }
+    }
+
+    async function saveStudentRecord(studentId, record) {
+        const today = new Date().toISOString().split('T')[0];
+        try {
+            await db.collection('attendance').doc(today).set({
+                [studentId]: record
+            }, { merge: true });
+            
+            // Also update local state
+            if (!state.attendance[today]) state.attendance[today] = {};
+            state.attendance[today][studentId] = record;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        } catch (e) {
+            console.error("Cloud save failed:", e);
+        }
+    }
+
+    async function syncAllData() {
+        try {
+            showToast('Syncing with Cloud...', 'primary');
+            
+            // 1. Listen for Students
+            db.collection('config').doc('students').onSnapshot((doc) => {
+                if (doc.exists) {
+                    state.students = doc.data().list || [];
+                    sortStudents();
+                    render();
+                }
+            });
+
+            // 2. Listen for Today's Attendance
+            const today = new Date().toISOString().split('T')[0];
+            db.collection('attendance').doc(today).onSnapshot((doc) => {
+                if (doc.exists) {
+                    state.attendance[today] = doc.data();
+                    render();
+                }
+            });
+
+            // 3. Load Settings
+            const settings = await db.collection('config').doc('settings').get();
+            if (settings.exists) {
+                state.config = { ...state.config, ...settings.data() };
+            }
+
+            showToast('Live Cloud Sync Active', 'success');
+        } catch (e) {
+            showToast('Cloud Sync Error', 'danger');
+        }
     }
 
     // --- Student Logic ---
