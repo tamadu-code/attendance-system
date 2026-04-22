@@ -1,0 +1,1527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
+    <meta name="theme-color" content="#0f172a">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="School Attendance">
+    <meta name="mobile-web-app-capable" content="yes">
+    <link rel="manifest" href="manifest.json">
+    <title>Attendance | Filter by Class | Kiosk + Admin</title>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed', err));
+            });
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap');
+
+        :root {
+            --primary: #3b82f6;
+            --primary-glow: rgba(59, 130, 246, 0.4);
+            --bg-dark: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --radius-lg: 24px;
+            --shadow-premium: 0 20px 50px -12px rgba(0, 0, 0, 0.5);
+            
+            --bg-body: var(--bg-dark);
+            --bg-panel: var(--bg-card);
+            --text-on-panel: var(--text-main);
+        }
+
+        body.light-theme {
+            --bg-body: #f1f5f9;
+            --bg-panel: #ffffff;
+            --text-on-panel: #0f172a;
+            --bg-dark: #334155;
+            --bg-card: #ffffff;
+            --text-main: #0f172a;
+            --text-muted: #64748b;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        body {
+            background: var(--bg-body);
+            color: var(--text-main);
+            min-height: 100vh;
+            overflow-x: hidden;
+            line-height: 1.6;
+            padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0;
+            transition: background 0.3s ease, color 0.3s ease;
+        }
+
+        .app {
+            max-width: 500px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 20px;
+            padding-bottom: 100px;
+        }
+
+        /* --- Custom Scrollbar --- */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: var(--border-glass); border-radius: 10px; }
+
+        /* --- Header --- */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0 30px;
+        }
+
+        .logo-area h1 {
+            font-size: 1.5rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: linear-gradient(135deg, #fff 0%, #94a3b8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .mode-switch {
+            display: flex;
+            background: rgba(255,255,255,0.05);
+            padding: 4px;
+            border-radius: 100px;
+            border: 1px solid var(--border-glass);
+        }
+
+        .mode-btn {
+            background: transparent;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 100px;
+            color: var(--text-dim);
+            font-weight: 600;
+            font-size: 0.8rem;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .mode-btn.active {
+            background: white;
+            color: var(--secondary);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        /* --- Glass Cards --- */
+        .card {
+            background: var(--card-glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-glass);
+            border-radius: var(--radius-xl);
+            padding: 32px 24px;
+            box-shadow: var(--shadow-premium);
+            margin-bottom: 24px;
+            animation: fadeIn 0.6s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* --- Kiosk View --- */
+        .kiosk-panel {
+            text-align: center;
+            position: relative;
+        }
+
+        .live-clock {
+            font-size: 4rem;
+            font-weight: 800;
+            margin: 0;
+            letter-spacing: -2px;
+            text-shadow: 0 0 30px var(--primary-glow);
+            font-variant-numeric: tabular-nums;
+        }
+
+        .live-date {
+            font-size: 0.9rem;
+            color: var(--text-dim);
+            margin-bottom: 20px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .code-display {
+            display: flex;
+            justify-content: center;
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+
+        .code-dot {
+            width: 16px;
+            height: 16px;
+            border: 2px solid var(--border-glass);
+            border-radius: 50%;
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        .code-dot.filled {
+            background: var(--primary);
+            border-color: var(--primary);
+            box-shadow: 0 0 20px var(--primary);
+            transform: scale(1.3);
+        }
+
+        .numeric-keypad {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            max-width: 320px;
+            margin: 0 auto;
+        }
+
+        .keypad-btn {
+            aspect-ratio: 1;
+            background: rgba(255,255,255,0.03);
+            border: 1px solid var(--border-glass);
+            color: white;
+            font-size: 1.75rem;
+            font-weight: 600;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+        }
+
+        .keypad-btn:active {
+            background: var(--primary);
+            transform: scale(0.9);
+            box-shadow: 0 0 30px var(--primary-glow);
+        }
+
+        .keypad-btn.special {
+            font-size: 1.2rem;
+            color: var(--text-dim);
+            background: transparent;
+        }
+
+        .kiosk-actions {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 12px;
+            margin-top: 20px;
+        }
+
+        .btn {
+            padding: 18px;
+            border-radius: 20px;
+            font-weight: 700;
+            border: 1px solid transparent;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 0.95rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .btn-success {
+            background: var(--success);
+            color: white;
+            box-shadow: 0 10px 20px -5px rgba(16, 185, 129, 0.3);
+        }
+
+        .btn-warning {
+            background: var(--warning);
+            color: white;
+            box-shadow: 0 10px 20px -5px rgba(245, 158, 11, 0.3);
+        }
+
+        .btn:active { transform: scale(0.96); opacity: 0.9; }
+
+        /* --- Admin Section --- */
+        .admin-section { display: none; color: white; }
+        .admin-section.active-section { display: block; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: var(--card-glass);
+            padding: 20px;
+            border-radius: 24px;
+            border: 1px solid var(--border-glass);
+        }
+
+        .stat-label { font-size: 0.7rem; color: var(--text-dim); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; display: block; }
+        .stat-value { font-size: 1.5rem; font-weight: 800; color: white; }
+
+        .action-bar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .search-input {
+            flex: 1;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid var(--border-glass);
+            padding: 14px 20px;
+            border-radius: 16px;
+            color: white;
+            font-size: 0.9rem;
+            outline: none;
+        }
+
+        .search-input:focus { border-color: var(--primary); }
+
+        /* --- Responsive Table --- */
+        .table-container {
+            background: var(--card-glass);
+            border-radius: 24px;
+            border: 1px solid var(--border-glass);
+            overflow: hidden;
+        }
+
+        table { width: 100%; border-collapse: collapse; }
+        th { padding: 16px; text-align: left; font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; background: rgba(255,255,255,0.02); }
+        td { padding: 16px; border-top: 1px solid var(--border-glass); font-size: 0.95rem; }
+
+        .badge {
+            padding: 4px 10px;
+            border-radius: 100px;
+            font-size: 0.7rem;
+            font-weight: 800;
+            text-transform: uppercase;
+        }
+        .badge-present { background: rgba(16, 185, 129, 0.1); color: var(--success); }
+        .badge-absent { background: rgba(239, 68, 68, 0.1); color: var(--danger); }
+        .badge-late { background: rgba(245, 158, 11, 0.1); color: var(--warning); }
+
+        /* --- Mobile Table --- */
+        @media (max-width: 600px) {
+            table thead { display: none; }
+            table tr { display: block; border-bottom: 2px solid var(--border-glass); padding: 10px 0; }
+            table td { 
+                display: flex; 
+                justify-content: space-between; 
+                align-items: center; 
+                padding: 8px 16px; 
+                border: none;
+                font-size: 0.85rem;
+            }
+            table td::before { 
+                content: attr(data-label); 
+                font-weight: 700; 
+                color: var(--text-dim);
+                text-transform: uppercase;
+                font-size: 0.7rem;
+            }
+            table td[data-label="Actions"] { justify-content: flex-end; gap: 8px; border-top: 1px solid var(--border-glass); margin-top: 5px; padding-top: 12px; }
+            table td[data-label="Actions"]::before { display: none; }
+        }
+
+        /* --- Bottom Nav --- */
+        .bottom-nav {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: calc(100% - 40px);
+            max-width: 460px;
+            background: rgba(15, 23, 42, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--border-glass);
+            display: flex;
+            justify-content: space-around;
+            padding: 12px;
+            border-radius: 30px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            z-index: 1000;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: var(--text-dim);
+            font-size: 0.65rem;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 60px;
+        }
+
+        .nav-item.active { color: white; }
+        .nav-icon { font-size: 1.25rem; transition: transform 0.3s; }
+        .nav-item.active .nav-icon { transform: translateY(-4px) scale(1.2); }
+        
+        .nav-icon-main {
+            background: var(--primary);
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-top: -35px;
+            font-size: 1.5rem;
+            box-shadow: 0 10px 20px var(--primary-glow);
+            border: 4px solid var(--bg-dark);
+            transition: all 0.3s;
+        }
+        
+        .nav-item.active .nav-icon-main { transform: scale(1.1) translateY(-5px); }
+
+        /* --- Toast System --- */
+        #toast-container {
+            position: fixed;
+            top: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2000;
+            width: calc(100% - 40px);
+            max-width: 400px;
+        }
+
+        .toast {
+            background: rgba(255, 255, 255, 0.95);
+            color: var(--secondary);
+            padding: 16px 20px;
+            border-radius: 20px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            box-shadow: 0 15px 30px rgba(0,0,0,0.3);
+            transform-origin: top;
+            animation: toastIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes toastIn {
+            from { transform: scale(0.8) translateY(-40px); opacity: 0; }
+            to { transform: scale(1) translateY(0); opacity: 1; }
+        }
+
+        /* --- Hamburger & Sidebar --- */
+        .hamburger { display: none; } /* Hide on mobile app view */
+        .sidebar { display: none; }
+
+        @media (max-width: 480px) {
+            .live-clock { font-size: 3.5rem; }
+            .keypad-btn { font-size: 1.5rem; }
+            .app { padding: 15px; }
+        }
+
+        /* --- Admin UI Elements --- */
+        .btn-sm { padding: 8px 16px; font-size: 0.75rem; border-radius: 12px; }
+        .btn-ghost { background: rgba(255,255,255,0.05); color: var(--text-dim); border: 1px solid var(--border-glass); }
+
+        code {
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--primary);
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: 800;
+            font-family: monospace;
+            text-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
+        }
+
+        body.light-theme code {
+            background: rgba(59, 130, 246, 0.1);
+        }
+
+        /* --- Modal System --- */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            backdrop-filter: blur(10px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 3000;
+            padding: 20px;
+        }
+
+        .modal-content {
+            background: var(--bg-card);
+            width: 100%;
+            max-width: 400px;
+            border-radius: 32px;
+            padding: 30px;
+            border: 1px solid var(--border-glass);
+            position: relative;
+            animation: modalIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes modalIn {
+            from { transform: scale(0.9) translateY(40px); opacity: 0; }
+            to { transform: scale(1) translateY(0); opacity: 1; }
+        }
+
+        .history-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border-glass);
+        }
+
+        /* --- Print Styles --- */
+        @media print {
+            body { background: white; color: black; padding: 0; }
+            .app { padding: 0; max-width: 100%; }
+            .header, .bottom-nav, .mode-switch, .kiosk-panel, .btn, .action-bar, .nav-item { display: none !important; }
+            .card { box-shadow: none; border: 1px solid #eee; padding: 0; margin: 0; }
+            .admin-section { display: block !important; }
+            .table-container { overflow: visible; }
+            table { font-size: 10pt; }
+            th, td { padding: 8px; border-bottom: 1px solid #ddd; }
+            .badge { border: 1px solid #ccc; background: transparent !important; color: black !important; }
+            .logo-area h1 { -webkit-text-fill-color: black; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <!-- Student Detail/QR Modal -->
+    <div id="studentModal" class="modal-overlay" onclick="closeModal()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <div id="modalHeader" style="margin-bottom: 20px; text-align: center;">
+                <h3 id="modalStudentName" style="font-size: 1.5rem; margin-bottom: 5px;">Student Name</h3>
+                <p id="modalStudentClass" style="color: var(--text-muted);">Class Name</p>
+            </div>
+            <div id="modalBody" style="max-height: 400px; overflow-y: auto;">
+                <!-- Content injected via JS -->
+            </div>
+            <button class="btn btn-ghost" style="width: 100%; margin-top: 20px; border-radius: 16px;" onclick="closeModal()">Close</button>
+        </div>
+    </div>
+
+    <div class="app">
+        <div class="header">
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div class="hamburger" id="hamburgerBtn">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <div class="logo-area">
+                    <h1>Attendance Pro</h1>
+                </div>
+            </div>
+            <div class="mode-switch">
+                <button id="kioskModeBtn" class="mode-btn active"><span>🔑</span> Kiosk</button>
+                <button id="adminModeBtn" class="mode-btn admin-btn"><span>🛡️</span> Admin</button>
+            </div>
+        </div>
+
+        <!-- KIOSK VIEW -->
+        <div id="kioskView" class="card kiosk-panel">
+            <div class="live-clock" id="liveClock">00:00:00</div>
+            <div class="live-date" id="liveDate">Wednesday, April 22</div>
+            
+            <div class="code-display" id="codeDisplay">
+                <div class="code-dot"></div>
+                <div class="code-dot"></div>
+                <div class="code-dot"></div>
+                <div class="code-dot"></div>
+            </div>
+
+            <div class="numeric-keypad" id="numericKeypad">
+                <!-- JS Populated -->
+            </div>
+
+            <div class="kiosk-actions">
+                <button id="kioskSignInBtn" class="btn btn-success">⏱️ SIGN IN</button>
+                <button id="qrScanBtn" class="btn btn-ghost" style="border-radius: 50%; width: 48px; height: 48px; padding: 0; justify-content: center;">📷</button>
+                <button id="kioskSignOutBtn" class="btn btn-warning">🚪 SIGN OUT</button>
+            </div>
+            
+            <p style="margin-top: 24px; font-size: 0.85rem; opacity: 0.7;">
+                Sign in starts at <span id="cutoffDisplay">08:30</span>. Late after that.
+            </p>
+        </div>
+
+        <!-- ADMIN VIEW -->
+        <div id="adminView" class="admin-section">
+            <div id="adminContentArea">
+                <!-- JS Populated -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation (Mobile) -->
+    <div class="bottom-nav">
+        <div class="nav-item active" id="navKiosk">
+            <span class="nav-icon">🔑</span>
+            <span>Kiosk</span>
+        </div>
+        <div class="nav-item" id="navStudents">
+            <span class="nav-icon">👥</span>
+            <span>Students</span>
+        </div>
+        <div class="nav-item" id="navAttendance">
+            <div class="nav-icon-main">📅</div>
+            <span>Logs</span>
+        </div>
+        <div class="nav-item" id="navSummary">
+            <span class="nav-icon">📊</span>
+            <span>Reports</span>
+        </div>
+        <div class="nav-item" id="navLogout">
+            <span class="nav-icon">🚪</span>
+            <span>Exit</span>
+        </div>
+    </div>
+
+    <!-- Sidebar (Desktop/Tablet) -->
+    <div id="sidebarOverlay" class="overlay"></div>
+    <div id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <h2 style="font-size: 1.25rem; margin: 0;">Admin Menu</h2>
+            <div class="sidebar-close" id="closeSidebarBtn">&times;</div>
+        </div>
+        <div class="sidebar-menu">
+            <div id="menuStudentManagement" class="sidebar-menu-item"><span>👥</span> Student Management</div>
+            <div id="menuDailyAttendance" class="sidebar-menu-item"><span>📆</span> Daily Attendance</div>
+            <div id="menuSummary" class="sidebar-menu-item"><span>📊</span> Attendance Summary</div>
+            <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 12px 0;">
+            <div id="themeToggleBtn" class="sidebar-menu-item"><span>🌓</span> Switch Theme</div>
+            <div onclick="backupData()" class="sidebar-menu-item"><span>📤</span> Backup (Export All)</div>
+            <label class="sidebar-menu-item" style="cursor: pointer;">
+                <span>📥</span> Restore (Import All)
+                <input type="file" id="restoreFile" accept=".json" hidden onchange="restoreData(this)">
+            </label>
+        </div>
+    </div>
+
+<script>
+    // --- Constants & State ---
+    const STORAGE_KEY = 'attendance_app_v2';
+    const ADMIN_PASS = 'admin999';
+    
+    let state = {
+        students: [],
+        attendance: {},
+        config: {
+            lateTime: '08:30',
+            schoolName: 'Attendance Pro',
+            theme: localStorage.getItem('theme') || 'dark'
+        },
+        ui: {
+            currentMode: 'kiosk', 
+            adminSection: 'students', 
+            kioskCode: '',
+            searchQuery: '',
+            sortBy: 'name',
+            viewDate: new Date().toISOString().split('T')[0]
+        }
+    };
+
+    function vibrate(ms = 50) {
+        if ('vibrate' in navigator) {
+            navigator.vibrate(ms);
+        }
+    }
+
+    function toggleTheme() {
+        state.config.theme = state.config.theme === 'dark' ? 'light' : 'dark';
+        document.body.classList.toggle('light-theme', state.config.theme === 'light');
+        localStorage.setItem('theme', state.config.theme);
+        saveData();
+    }
+
+    // --- Core Functions ---
+    function init() {
+        loadData();
+        startClock();
+        render();
+        setupEventListeners();
+        document.body.classList.toggle('light-theme', state.config.theme === 'light');
+    }
+
+    function loadData() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            const data = JSON.parse(saved);
+            state.students = data.students || [];
+            state.attendance = data.attendance || {};
+            state.config = data.config || state.config;
+            state.ui.kioskCode = '';
+            state.ui.searchQuery = '';
+        } else {
+            // Default Demo Students
+            state.students = [
+                { id: '1', name: 'Emma Johnson', class: 'Grade 5A', code: '1234' },
+                { id: '2', name: 'Michael Chen', class: 'Grade 5A', code: '5678' },
+                { id: '3', name: 'Sophia Rodriguez', class: 'Grade 5B', code: '9012' }
+            ];
+            saveData();
+        }
+        document.getElementById('cutoffDisplay').textContent = state.config.lateTime;
+        sortStudents();
+    }
+
+    function saveData() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            students: state.students,
+            attendance: state.attendance,
+            config: state.config
+        }));
+    }
+
+    // --- Student Logic ---
+    function sortStudents() {
+        state.students.sort((a, b) => {
+            const valA = (a[state.ui.sortBy] || '').toLowerCase();
+            const valB = (b[state.ui.sortBy] || '').toLowerCase();
+            return valA.localeCompare(valB);
+        });
+    }
+
+    function generateUniqueCode() {
+        const existing = new Set(state.students.map(s => s.code));
+        for(let i=0; i<1000; i++) {
+            const code = Math.floor(1000 + Math.random() * 9000).toString();
+            if(!existing.has(code)) return code;
+        }
+        return Date.now().toString().slice(-4);
+    }
+
+    window.handleBulkUpload = (input) => {
+        const file = input.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const content = e.target.result;
+            const lines = content.split(/\r?\n/).filter(l => l.trim().length > 0);
+            let added = 0;
+            let skipped = 0;
+
+            lines.forEach((line, index) => {
+                if (index === 0 && line.toLowerCase().includes('name')) return; // Skip header
+
+                const [name, className, code] = line.split(',').map(s => s?.trim());
+                if (!name) return;
+
+                if (state.students.find(s => s.name.toLowerCase() === name.toLowerCase())) {
+                    skipped++;
+                    return;
+                }
+
+                const finalCode = (code && /^\d{4}$/.test(code) && !state.students.find(s => s.code === code)) 
+                    ? code 
+                    : generateUniqueCode();
+
+                state.students.push({
+                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                    name,
+                    class: className || '—',
+                    code: finalCode
+                });
+                added++;
+            });
+
+            saveData();
+            sortStudents();
+            renderAdmin();
+            showToast(`Imported ${added} students. ${skipped} skipped.`, 'success');
+        };
+        reader.readAsText(file);
+    };
+
+    // --- Export Logic ---
+    window.downloadSampleCsv = () => {
+        const csv = "Name,Class,Code\nJohn Doe,Grade 1,1111\nJane Smith,Grade 1,2222";
+        downloadBlob(csv, 'sample_students.csv');
+    };
+
+    window.downloadStudentList = () => {
+        let csv = "Name,Class,Code\n";
+        state.students.forEach(s => {
+            csv += `"${s.name}","${s.class}","${s.code}"\n`;
+        });
+        downloadBlob(csv, 'student_list.csv');
+    };
+
+    window.downloadDailyCsv = () => {
+        const date = state.ui.viewDate;
+        const logs = state.attendance[date] || {};
+        let csv = "Student Name,Class,Sign In,Sign Out,Status\n";
+        
+        state.students.forEach(s => {
+            const log = logs[s.id] || {};
+            const status = log.in ? (log.late ? 'Late' : 'Present') : 'Absent';
+            csv += `"${s.name}","${s.class}","${log.in || ''}","${log.out || ''}","${status}"\n`;
+        });
+        downloadBlob(csv, `attendance_${date}.csv`);
+    };
+
+    function downloadBlob(content, filename) {
+        const blob = new Blob(["\uFEFF" + content], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // --- UI Helpers ---
+    function showToast(message, type = 'primary') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        
+        let icon = '🔔';
+        if (type === 'success') icon = '✅';
+        if (type === 'warning') icon = '⚠️';
+        if (type === 'danger') icon = '❌';
+
+        toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-20px)';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    function startClock() {
+        const clockEl = document.getElementById('liveClock');
+        const dateEl = document.getElementById('liveDate');
+        
+        setInterval(() => {
+            const now = new Date();
+            clockEl.textContent = now.toLocaleTimeString([], { hour12: false });
+            dateEl.textContent = now.toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+        }, 1000);
+    }
+
+    // --- Kiosk Logic ---
+    function handleKeypad(key) {
+        vibrate(40); // Subtle pulse on touch
+        if (key === 'C') {
+            state.ui.kioskCode = '';
+        } else if (key === '⌫') {
+            state.ui.kioskCode = state.ui.kioskCode.slice(0, -1);
+        } else if (state.ui.kioskCode.length < 4) {
+            state.ui.kioskCode += key;
+        }
+        updateCodeDisplay();
+    }
+
+    function updateCodeDisplay() {
+        const dots = document.querySelectorAll('.code-dot');
+        dots.forEach((dot, i) => {
+            dot.classList.toggle('filled', i < state.ui.kioskCode.length);
+        });
+    }
+
+    function processAttendance(type) {
+        const code = state.ui.kioskCode;
+        if (code.length < 4) {
+            showToast('Please enter your 4-digit code', 'warning');
+            return;
+        }
+
+        const student = state.students.find(s => s.code === code);
+        if (!student) {
+            vibrate(300); // Long pulse on error
+            showToast('Student code not found', 'danger');
+            state.ui.kioskCode = '';
+            updateCodeDisplay();
+            return;
+        }
+
+        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
+
+        if (!state.attendance[today]) state.attendance[today] = {};
+        if (!state.attendance[today][student.id]) {
+            state.attendance[today][student.id] = { in: null, out: null, late: false };
+        }
+
+        const record = state.attendance[today][student.id];
+
+        if (type === 'in') {
+            if (record.in) {
+                showToast(`${student.name} already signed in today`, 'warning');
+            } else {
+                record.in = timeStr;
+                record.late = timeStr > state.config.lateTime;
+                vibrate([100, 50, 100]); // Happy pattern on success
+                showToast(`${student.name} signed IN at ${timeStr}${record.late ? ' (LATE)' : ''}`, 'success');
+            }
+        } else {
+            if (!record.in) {
+                showToast('Please sign in before signing out', 'warning');
+            } else if (record.out) {
+                showToast(`${student.name} already signed out today`, 'warning');
+            } else {
+                record.out = timeStr;
+                vibrate([100, 50, 100]); // Happy pattern on success
+                showToast(`${student.name} signed OUT at ${timeStr}`, 'success');
+            }
+        }
+
+        state.ui.kioskCode = '';
+        updateCodeDisplay();
+        saveData();
+        render(); // Update stats if in admin view
+    }
+
+    // --- Admin Logic ---
+    function render() {
+        if (state.ui.currentMode === 'admin') {
+            renderAdmin();
+        } else {
+            renderKiosk();
+        }
+    }
+
+    function renderKiosk() {
+        document.getElementById('kioskView').style.display = 'block';
+        document.getElementById('adminView').style.display = 'none';
+        
+        // Populate keypad
+        const keypad = document.getElementById('numericKeypad');
+        keypad.innerHTML = '';
+        ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', 'C'].forEach(key => {
+            const btn = document.createElement('button');
+            btn.className = 'keypad-btn' + (isNaN(key) ? ' special' : '');
+            btn.textContent = key;
+            btn.onclick = () => handleKeypad(key);
+            keypad.appendChild(btn);
+        });
+    }
+
+    function renderAdmin() {
+        document.getElementById('kioskView').style.display = 'none';
+        document.getElementById('adminView').style.display = 'block';
+        
+        const container = document.getElementById('adminContentArea');
+        const today = new Date().toISOString().split('T')[0];
+        const todayLogs = state.attendance[today] || {};
+        
+        // Calculate Stats for Today
+        const total = state.students.length;
+        const present = Object.values(todayLogs).filter(l => l.in).length;
+        const late = Object.values(todayLogs).filter(l => l.late).length;
+        const absent = total - present;
+
+        let html = `
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-label">Total Students</span>
+                    <span class="stat-value">${total}</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Present</span>
+                    <span class="stat-value" style="color: var(--success)">${present}</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Absent</span>
+                    <span class="stat-value" style="color: var(--danger)">${absent}</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Late</span>
+                    <span class="stat-value" style="color: var(--accent)">${late}</span>
+                </div>
+            </div>
+        `;
+
+        if (state.ui.adminSection === 'students') {
+            html += renderStudentManagement();
+        } else if (state.ui.adminSection === 'attendance') {
+            html += renderDailyAttendance();
+        } else if (state.ui.adminSection === 'reports') {
+            html += renderSummary();
+        }
+
+        container.innerHTML = html;
+    }
+
+    function renderStudentManagement() {
+        const filtered = state.students.filter(s => 
+            s.name.toLowerCase().includes(state.ui.searchQuery.toLowerCase()) ||
+            s.code.includes(state.ui.searchQuery)
+        );
+
+        return `
+            <div class="card">
+                <div class="header" style="display: flex; justify-content: space-between; align-items: center; color: var(--text-main); margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+                    <h2 style="font-size: 1.2rem; margin: 0;">Manage Students</h2>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="btn btn-primary btn-sm" style="padding: 8px 12px;" onclick="showAddStudentModal()">+ Add</button>
+                        <button class="btn btn-ghost btn-sm" style="padding: 8px 12px;" onclick="printBarcodeSheet()">🖨️ Print Barcodes</button>
+                        <label class="btn btn-ghost btn-sm" style="cursor:pointer; padding: 8px 12px;">📂 Bulk CSV<input type="file" id="bulkCSV" accept=".csv" hidden onchange="handleBulkUpload(this)"></label>
+                        <button class="btn btn-ghost btn-sm" style="padding: 8px 12px;" onclick="downloadSampleCsv()">📄 Sample</button>
+                        <button class="btn btn-ghost btn-sm" style="padding: 8px 12px;" onclick="downloadStudentList()">📥 Export List</button>
+                    </div>
+                </div>
+                <div class="action-bar">
+                    <input type="text" class="search-input" placeholder="Search students..." value="${state.ui.searchQuery}" oninput="state.ui.searchQuery = this.value; renderAdmin()">
+                    <select class="search-input" style="min-width: 150px; flex: 0;" onchange="state.ui.sortBy = this.value; sortStudents(); renderAdmin()">
+                        <option value="name" ${state.ui.sortBy === 'name' ? 'selected' : ''}>Sort by Name</option>
+                        <option value="class" ${state.ui.sortBy === 'class' ? 'selected' : ''}>Sort by Class</option>
+                        <option value="code" ${state.ui.sortBy === 'code' ? 'selected' : ''}>Sort by Code</option>
+                    </select>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Class</th>
+                                <th>Code</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${filtered.length ? filtered.map(s => `
+                                <tr>
+                                    <td data-label="Name">${s.name}</td>
+                                    <td data-label="Class">${s.class}</td>
+                                    <td data-label="Code"><code>${s.code}</code></td>
+                                    <td data-label="Actions" style="display: flex; gap: 4px; justify-content: flex-end;">
+                                        <button class="btn btn-ghost btn-sm" onclick="showStudentQR('${s.id}')" title="View QR">🆔</button>
+                                        <button class="btn btn-ghost btn-sm" onclick="showStudentHistory('${s.id}')" title="History">📈</button>
+                                        <button class="btn btn-ghost btn-sm" onclick="editStudent('${s.id}')" title="Edit">✏️</button>
+                                        <button class="btn btn-ghost btn-sm" style="color: var(--danger)" onclick="deleteStudent('${s.id}')" title="Delete">🗑️</button>
+                                    </td>
+                                </tr>
+                            `).join('') : '<tr><td colspan="4" style="text-align:center; padding: 40px; color: var(--text-muted);">No students found.</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderDailyAttendance() {
+        const logs = state.attendance[state.ui.viewDate] || {};
+        return `
+            <div class="card">
+                <div class="header" style="display: flex; color: var(--text-main); margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+                    <h2 style="font-size: 1.2rem;">Daily Log: ${state.ui.viewDate}</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="date" class="search-input" style="padding: 8px 16px; min-width: 150px;" value="${state.ui.viewDate}" onchange="state.ui.viewDate = this.value; renderAdmin()">
+                        <button class="btn btn-ghost btn-sm" onclick="downloadDailyCsv()">📥 CSV</button>
+                        <button class="btn btn-ghost btn-sm" onclick="window.print()">🖨️ PDF</button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Student</th>
+                                <th>Sign In</th>
+                                <th>Sign Out</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${state.students.map(s => {
+                                const log = logs[s.id] || {};
+                                return `
+                                    <tr>
+                                        <td data-label="Student">${s.name}<br><small style="color: var(--text-muted)">${s.class}</small></td>
+                                        <td data-label="Sign In">${log.in || '—'}</td>
+                                        <td data-label="Sign Out">${log.out || '—'}</td>
+                                        <td data-label="Status">
+                                            ${log.in ? 
+                                                (log.late ? '<span class="badge badge-late">Late</span>' : '<span class="badge badge-present">On Time</span>') : 
+                                                '<span class="badge badge-absent">Absent</span>'}
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderSummary() {
+        const allDates = Object.keys(state.attendance);
+        const rows = state.students.map(student => {
+            let present = 0, late = 0, total = allDates.length;
+            allDates.forEach(date => {
+                const rec = state.attendance[date][student.id];
+                if (rec && rec.in) {
+                    present++;
+                    if (rec.late) late++;
+                }
+            });
+            const percent = total === 0 ? 0 : Math.round((present / total) * 100);
+            return { student, present, late, total, percent };
+        });
+
+        return `
+            <div class="card">
+                <div class="header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="font-size: 1.2rem; margin:0;">Overall Summary</h2>
+                    <button class="btn btn-ghost btn-sm" onclick="downloadCSV()">📥 Full Export</button>
+                </div>
+                <div class="action-bar">
+                    <div style="flex: 1">
+                        <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Late Cutoff Time</label>
+                        <input type="time" class="search-input" value="${state.config.lateTime}" onchange="state.config.lateTime = this.value; saveData(); showToast('Cutoff updated', 'success'); renderAdmin()">
+                    </div>
+                </div>
+                <div class="table-container" style="margin-top: 20px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Student</th>
+                                <th>Present</th>
+                                <th>Late</th>
+                                <th>Days</th>
+                                <th>Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows.map(r => `
+                                <tr>
+                                    <td data-label="Student">${r.student.name}</td>
+                                    <td data-label="Present">${r.present}</td>
+                                    <td data-label="Late">${r.late}</td>
+                                    <td data-label="Days">${r.total}</td>
+                                    <td data-label="Rate">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <div style="flex: 1; height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden; min-width: 60px;">
+                                                <div style="width: ${r.percent}%; height: 100%; background: var(--primary);"></div>
+                                            </div>
+                                            <span>${r.percent}%</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 20px;">
+                    <button class="btn btn-ghost btn-sm" onclick="clearAllData()" style="color: var(--danger)">⚠️ Clear All System Data</button>
+                </div>
+            </div>
+        `;
+    }
+
+    // --- Admin Actions ---
+    window.showAddStudentModal = () => {
+        const name = prompt('Student Full Name:');
+        if (!name) return;
+        const cls = prompt('Class/Grade:');
+        const code = prompt('4-Digit Code (leave blank for random):') || Math.floor(1000 + Math.random() * 9000).toString();
+        
+        if (state.students.find(s => s.code === code)) {
+            showToast('Code already in use', 'danger');
+            return;
+        }
+
+        state.students.push({ id: Date.now().toString(), name, class: cls, code });
+        saveData();
+        renderAdmin();
+        showToast('Student added', 'success');
+    };
+
+    window.editStudent = (id) => {
+        const student = state.students.find(s => s.id === id);
+        const name = prompt('Edit Name:', student.name);
+        if (!name) return;
+        const cls = prompt('Edit Class:', student.class);
+        
+        student.name = name;
+        student.class = cls;
+        saveData();
+        renderAdmin();
+        showToast('Student updated', 'success');
+    };
+
+    window.deleteStudent = (id) => {
+        if (confirm('Are you sure you want to delete this student?')) {
+            state.students = state.students.filter(s => s.id !== id);
+            saveData();
+            renderAdmin();
+            showToast('Student deleted', 'danger');
+        }
+    };
+
+    window.showStudentQR = (id) => {
+        const student = state.students.find(s => s.id === id);
+        if (!student) return;
+        
+        const modal = document.getElementById('studentModal');
+        const body = document.getElementById('modalBody');
+        
+        document.getElementById('modalStudentName').textContent = student.name;
+        document.getElementById('modalStudentClass').textContent = student.class;
+        
+        // Use BWIP-JS for Linear Barcode (Code 128)
+        const barcodeUrl = `https://bwipjs-api.metafloor.com/?bcid=code128&text=${student.code}&scale=3&rotate=N&includetext`;
+        
+        body.innerHTML = `
+            <div style="text-align: center;">
+                <div style="background: white; padding: 25px; border-radius: 20px; display: inline-block; margin-bottom: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1);">
+                    <img src="${barcodeUrl}" alt="Barcode" style="max-width: 100%; height: auto; display: block;" onload="this.style.opacity=1" style="opacity: 0; transition: opacity 0.3s;">
+                </div>
+                <div style="font-size: 1.5rem; font-weight: 800; color: var(--primary); letter-spacing: 8px; margin-bottom: 10px;">
+                    ${student.code}
+                </div>
+                <p style="color: var(--text-muted); margin-bottom: 20px;">Scan this Linear Barcode</p>
+                <a href="${barcodeUrl}" download="${student.name}_Barcode.png" target="_blank" class="btn btn-ghost btn-sm" style="width: auto; display: inline-flex;">📥 Save Barcode</a>
+            </div>
+        `;
+        
+        modal.style.display = 'flex';
+        vibrate(50);
+    };
+
+    window.showStudentHistory = (id) => {
+        const student = state.students.find(s => s.id === id);
+        if (!student) return;
+        
+        const modal = document.getElementById('studentModal');
+        const body = document.getElementById('modalBody');
+        
+        document.getElementById('modalStudentName').textContent = student.name;
+        document.getElementById('modalStudentClass').textContent = "Attendance History";
+        
+        let historyHtml = '<div style="margin-top: 10px;">';
+        const dates = Object.keys(state.attendance).sort().reverse();
+        
+        let count = 0;
+        dates.forEach(date => {
+            const record = state.attendance[date][student.id];
+            if (record && record.in) {
+                count++;
+                historyHtml += `
+                    <div class="history-item">
+                        <div>
+                            <div style="font-weight: 600;">${new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted)">In: ${record.in} | Out: ${record.out || '—'}</div>
+                        </div>
+                        <div>
+                            ${record.late ? '<span class="badge badge-late">Late</span>' : '<span class="badge badge-present">On Time</span>'}
+                        </div>
+                    </div>
+                `;
+            }
+        });
+        
+        if (count === 0) historyHtml = '<div style="text-align: center; padding: 40px; color: var(--text-muted);">No records found.</div>';
+        historyHtml += '</div>';
+        
+        body.innerHTML = historyHtml;
+        modal.style.display = 'flex';
+        vibrate(50);
+    };
+
+    window.closeModal = () => {
+        document.getElementById('studentModal').style.display = 'none';
+    };
+
+    // --- Backup & Restore Logic ---
+    window.backupData = () => {
+        const data = JSON.stringify(state);
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `attendance_system_backup_${new Date().toISOString().split('T')[0]}.json`;
+        a.click();
+        showToast('System Backup Downloaded', 'success');
+    };
+
+    window.restoreData = (input) => {
+        const file = input.files[0];
+        if (!file) return;
+
+        if (!confirm('WARNING: This will overwrite ALL current data with the backup file. Proceed?')) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const importedState = JSON.parse(e.target.result);
+                if (!importedState.students || !importedState.attendance) {
+                    throw new Error('Invalid backup file');
+                }
+                
+                state = importedState;
+                saveData();
+                render();
+                showToast('System Restored Successfully!', 'success');
+                closeSidebar();
+            } catch (err) {
+                showToast('Error: Invalid backup file', 'danger');
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    window.printBarcodeSheet = () => {
+        const sortedStudents = [...state.students].sort((a, b) => {
+            const clsA = (a.class || '').toLowerCase();
+            const clsB = (b.class || '').toLowerCase();
+            if (clsA !== clsB) return clsA.localeCompare(clsB);
+            return (a.name || '').toLowerCase().localeCompare((b.name || '').toLowerCase());
+        });
+
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) {
+            alert('Please allow popups to print barcodes.');
+            return;
+        }
+
+        let html = `
+            <html>
+            <head>
+                <title>Student Barcodes (Sorted by Class)</title>
+                <style>
+                    body { font-family: 'Inter', sans-serif; padding: 20px; background: white; color: black; }
+                    .header-info { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+                    .sheet { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
+                    .card { border: 1px solid #ddd; padding: 12px; border-radius: 8px; text-align: center; page-break-inside: avoid; }
+                    .card img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+                    .name { font-weight: bold; margin-top: 8px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                    .class { font-size: 11px; color: #555; margin-bottom: 5px; }
+                    @media print { .no-print { display: none; } }
+                </style>
+            </head>
+            <body>
+                <div class="no-print" style="background: #f1f5f9; padding: 15px; border-radius: 12px; margin-bottom: 30px; text-align: center; border: 1px solid #cbd5e1;">
+                    <h2 style="margin: 0 0 10px 0; color: #0f172a;">Print Barcode Sheet</h2>
+                    <p style="margin: 0 0 15px 0; font-size: 14px;">Students are sorted by **Class** then **Name**.</p>
+                    <button onclick="window.print()" style="padding: 10px 24px; font-size: 16px; cursor: pointer; background: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: 600; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);">🖨️ Print Now</button>
+                </div>
+                <div class="header-info">
+                    <h1 style="margin:0;">Attendance System: Student ID Barcodes</h1>
+                    <p>Total Records: ${sortedStudents.length}</p>
+                </div>
+                <div class="sheet">
+        `;
+        
+        sortedStudents.forEach(s => {
+            const barcodeUrl = `https://bwipjs-api.metafloor.com/?bcid=code128&text=${s.code}&scale=3&rotate=N&includetext`;
+            html += `
+                <div class="card">
+                    <div class="class">${s.class}</div>
+                    <img src="${barcodeUrl}">
+                    <div class="name">${s.name}</div>
+                </div>
+            `;
+        });
+        
+        html += `</div></body></html>`;
+        printWindow.document.write(html);
+        printWindow.document.close();
+    };
+
+    window.downloadCSV = () => {
+        let csv = 'Name,Class,Code,Date,Status,In,Out\n';
+        Object.keys(state.attendance).forEach(date => {
+            state.students.forEach(s => {
+                const log = state.attendance[date][s.id] || {};
+                const status = log.in ? (log.late ? 'Late' : 'Present') : 'Absent';
+                csv += `"${s.name}","${s.class}","${s.code}","${date}","${status}","${log.in || ''}","${log.out || ''}"\n`;
+            });
+        });
+        
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `attendance_report_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+    };
+
+    window.clearAllData = () => {
+        if (confirm('EXTREME DANGER: This will delete ALL students and attendance records. Continue?')) {
+            localStorage.removeItem(STORAGE_KEY);
+            location.reload();
+        }
+    };
+
+    // --- Navigation Logic ---
+    function setupEventListeners() {
+        // Mode Switches
+        document.getElementById('kioskModeBtn').onclick = () => {
+            state.ui.currentMode = 'kiosk';
+            updateNavActive();
+            render();
+        };
+
+        document.getElementById('adminModeBtn').onclick = () => {
+            const pass = prompt('Enter Admin Password:');
+            if (pass === ADMIN_PASS) {
+                state.ui.currentMode = 'admin';
+                updateNavActive();
+                render();
+                showToast('Admin Access Granted', 'success');
+            } else {
+                showToast('Invalid Password', 'danger');
+            }
+        };
+
+        // Hamburger Menu Toggle
+        document.getElementById('hamburgerBtn').onclick = openSidebar;
+        document.getElementById('closeSidebarBtn').onclick = closeSidebar;
+        document.getElementById('sidebarOverlay').onclick = closeSidebar;
+
+        // Mobile Nav (Bottom Bar)
+        document.getElementById('navKiosk').onclick = () => {
+            state.ui.currentMode = 'kiosk';
+            updateNavActive();
+            render();
+        };
+        document.getElementById('navStudents').onclick = () => {
+            if (checkAdmin()) {
+                state.ui.currentMode = 'admin';
+                state.ui.adminSection = 'students';
+                updateNavActive();
+                render();
+            }
+        };
+        document.getElementById('navAttendance').onclick = () => {
+            if (checkAdmin()) {
+                state.ui.currentMode = 'admin';
+                state.ui.adminSection = 'attendance';
+                updateNavActive();
+                render();
+            }
+        };
+        document.getElementById('navSummary').onclick = () => {
+            if (checkAdmin()) {
+                state.ui.currentMode = 'admin';
+                state.ui.adminSection = 'reports';
+                updateNavActive();
+                render();
+            }
+        };
+        document.getElementById('navLogout').onclick = () => {
+            state.ui.currentMode = 'kiosk';
+            updateNavActive();
+            render();
+            showToast('Logged Out', 'primary');
+        };
+
+        // Kiosk Buttons
+        document.getElementById('kioskSignInBtn').onclick = () => processAttendance('in');
+        document.getElementById('kioskSignOutBtn').onclick = () => processAttendance('out');
+
+        // Sidebar Menu Items
+        document.getElementById('menuStudentManagement').onclick = () => { state.ui.adminSection = 'students'; render(); closeSidebar(); updateNavActive(); };
+        document.getElementById('menuDailyAttendance').onclick = () => { state.ui.adminSection = 'attendance'; render(); closeSidebar(); updateNavActive(); };
+        document.getElementById('menuSummary').onclick = () => { state.ui.adminSection = 'reports'; render(); closeSidebar(); updateNavActive(); };
+        document.getElementById('themeToggleBtn').onclick = () => { toggleTheme(); closeSidebar(); showToast(`Switched to ${state.config.theme} mode`, 'success'); };
+
+        // QR Scanner Placeholder
+        document.getElementById('qrScanBtn').onclick = () => {
+            vibrate(100);
+            showToast('QR Camera initializing... (Feature Ready)', 'primary');
+        };
+    }
+
+    function checkAdmin() {
+        if (state.ui.currentMode !== 'admin') {
+            const pass = prompt('Admin password required:');
+            if (pass === ADMIN_PASS) {
+                state.ui.currentMode = 'admin';
+                return true;
+            }
+            showToast('Access Denied', 'danger');
+            return false;
+        }
+        return true;
+    }
+
+    function updateNavActive() {
+        const items = document.querySelectorAll('.nav-item, .sidebar-menu-item');
+        items.forEach(i => i.classList.remove('active'));
+        
+        // Show/Hide Hamburger based on mode
+        const hamburger = document.getElementById('hamburgerBtn');
+        hamburger.style.display = state.ui.currentMode === 'admin' ? 'flex' : 'none';
+
+        if (state.ui.currentMode === 'kiosk') {
+            document.getElementById('navKiosk').classList.add('active');
+            document.getElementById('kioskModeBtn').classList.add('active');
+            document.getElementById('adminModeBtn').classList.remove('active');
+        } else {
+            document.getElementById('kioskModeBtn').classList.remove('active');
+            document.getElementById('adminModeBtn').classList.add('active');
+            
+            if (state.ui.adminSection === 'students') {
+                document.getElementById('navStudents')?.classList.add('active');
+                document.getElementById('menuStudentManagement')?.classList.add('active');
+            }
+            if (state.ui.adminSection === 'attendance') {
+                document.getElementById('navAttendance')?.classList.add('active');
+                document.getElementById('menuDailyAttendance')?.classList.add('active');
+            }
+            if (state.ui.adminSection === 'reports') {
+                document.getElementById('navSummary')?.classList.add('active');
+                document.getElementById('menuSummary')?.classList.add('active');
+            }
+        }
+    }
+
+    function openSidebar() {
+        document.getElementById('sidebar').classList.add('open');
+        document.getElementById('sidebarOverlay').style.display = 'block';
+    }
+
+    function closeSidebar() {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebarOverlay').style.display = 'none';
+    }
+
+    // Start App
+    init();
+</script>
+</body>
+</html>
