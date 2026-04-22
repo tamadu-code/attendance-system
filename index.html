@@ -20,7 +20,7 @@
         // --- Supabase Configuration ---
         const SUPABASE_URL = "https://wuzliodvddzmhehffqfx.supabase.co";
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1emxpb2R2ZGR6bWhlaGZmcWZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTkxNTEsImV4cCI6MjA5MjQzNTE1MX0.0ASY-NuhdHPhyg9pB2XYiXOLJTnrocXxjkC6gpqO_vQ";
-        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed', err));
@@ -764,7 +764,7 @@
                     class: s.class,
                     code: s.code
                 }));
-                await supabase.from('students').upsert(studentData);
+                await supabaseClient.from('students').upsert(studentData);
             }
 
             // 2. Sync Today's Attendance
@@ -778,11 +778,11 @@
                     sign_out: data.out,
                     is_late: data.late
                 }));
-                await supabase.from('attendance').upsert(attendanceData, { onConflict: 'student_id,date' });
+                await supabaseClient.from('attendance').upsert(attendanceData, { onConflict: 'student_id,date' });
             }
 
             // 3. Sync Settings
-            await supabase.from('settings').upsert({ key: 'config', value: state.config });
+            await supabaseClient.from('settings').upsert({ key: 'config', value: state.config });
         } catch (e) {
             console.warn("Supabase sync failed:", e);
         }
@@ -791,7 +791,7 @@
     async function saveStudentRecord(studentId, record) {
         const today = new Date().toISOString().split('T')[0];
         try {
-            await supabase.from('attendance').upsert({
+            await supabaseClient.from('attendance').upsert({
                 student_id: studentId,
                 date: today,
                 sign_in: record.in,
@@ -813,7 +813,7 @@
             showToast('Connecting to Supabase...', 'primary');
             
             // 1. Fetch Students
-            const { data: studentList } = await supabase.from('students').select('*');
+            const { data: studentList } = await supabaseClient.from('students').select('*');
             if (studentList) {
                 state.students = studentList.map(s => ({
                     id: s.id,
@@ -826,7 +826,7 @@
 
             // 2. Fetch Today's Attendance
             const today = new Date().toISOString().split('T')[0];
-            const { data: attendanceList } = await supabase.from('attendance').select('*').eq('date', today);
+            const { data: attendanceList } = await supabaseClient.from('attendance').select('*').eq('date', today);
             if (attendanceList) {
                 state.attendance[today] = {};
                 attendanceList.forEach(a => {
@@ -835,7 +835,7 @@
             }
 
             // 3. Fetch Settings
-            const { data: settingsData } = await supabase.from('settings').select('value').eq('key', 'config').single();
+            const { data: settingsData } = await supabaseClient.from('settings').select('value').eq('key', 'config').single();
             if (settingsData) {
                 state.config = { ...state.config, ...settingsData.value };
             }
@@ -843,7 +843,7 @@
             render();
 
             // 4. Real-time Subscriptions
-            supabase.channel('custom-all-channel')
+            supabaseClient.channel('custom-all-channel')
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, payload => {
                     refreshStudents();
                 })
@@ -860,7 +860,7 @@
     }
 
     async function refreshStudents() {
-        const { data } = await supabase.from('students').select('*');
+        const { data } = await supabaseClient.from('students').select('*');
         if (data) {
             state.students = data;
             sortStudents();
@@ -870,7 +870,7 @@
 
     async function refreshAttendance() {
         const today = new Date().toISOString().split('T')[0];
-        const { data } = await supabase.from('attendance').select('*').eq('date', today);
+        const { data } = await supabaseClient.from('attendance').select('*').eq('date', today);
         if (data) {
             state.attendance[today] = {};
             data.forEach(a => {
