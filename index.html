@@ -539,14 +539,15 @@
         @media print {
             body { background: white; color: black; padding: 0; }
             .app { padding: 0; max-width: 100%; }
-            .header, .bottom-nav, .mode-switch, .kiosk-panel, .btn, .action-bar, .nav-item { display: none !important; }
-            .card { box-shadow: none; border: 1px solid #eee; padding: 0; margin: 0; }
+            .header, .bottom-nav, .mode-switch, .kiosk-panel, .btn, .action-bar, .nav-item, .no-print { display: none !important; }
+            .card { box-shadow: none; border: none; padding: 0; margin: 0; }
             .admin-section { display: block !important; }
-            .table-container { overflow: visible; }
-            table { font-size: 10pt; }
-            th, td { padding: 8px; border-bottom: 1px solid #ddd; }
-            .badge { border: 1px solid #ccc; background: transparent !important; color: black !important; }
-            .logo-area h1 { -webkit-text-fill-color: black; }
+            .table-container { overflow: visible; border: none; }
+            table { font-size: 9pt; width: 100%; border-collapse: collapse; }
+            th, td { padding: 4px 8px; border: 1px solid #eee; text-align: left; }
+            .badge { border: none; background: transparent !important; color: black !important; padding: 0; font-weight: bold; }
+            .logo-area h1 { -webkit-text-fill-color: black; font-size: 1.5rem; margin-bottom: 10px; }
+            small { color: #666 !important; }
         }
     </style>
 </head>
@@ -1104,6 +1105,7 @@
                         <thead>
                             <tr>
                                 <th>Student</th>
+                                <th>Class</th>
                                 <th>Sign In</th>
                                 <th>Sign Out</th>
                                 <th>Status</th>
@@ -1114,12 +1116,13 @@
                                 const log = logs[s.id] || {};
                                 return `
                                     <tr>
-                                        <td data-label="Student">${s.name}<br><small style="color: var(--text-muted)">${s.class}</small></td>
+                                        <td data-label="Student">${s.name}</td>
+                                        <td data-label="Class">${s.class}</td>
                                         <td data-label="Sign In">${log.in || '—'}</td>
                                         <td data-label="Sign Out">${log.out || '—'}</td>
                                         <td data-label="Status">
                                             ${log.in ? 
-                                                (log.late ? '<span class="badge badge-late">Late</span>' : '<span class="badge badge-present">On Time</span>') : 
+                                                (log.late ? '<span class="badge badge-late">Late</span>' : '<span class="badge badge-present">Present</span>') : 
                                                 '<span class="badge badge-absent">Absent</span>'}
                                         </td>
                                     </tr>
@@ -1164,6 +1167,7 @@
                         <thead>
                             <tr>
                                 <th>Student</th>
+                                <th>Class</th>
                                 <th>Present</th>
                                 <th>Late</th>
                                 <th>Days</th>
@@ -1174,6 +1178,7 @@
                             ${rows.map(r => `
                                 <tr>
                                     <td data-label="Student">${r.student.name}</td>
+                                    <td data-label="Class">${r.student.class}</td>
                                     <td data-label="Present">${r.present}</td>
                                     <td data-label="Late">${r.late}</td>
                                     <td data-label="Days">${r.total}</td>
