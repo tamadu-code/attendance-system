@@ -10,6 +10,7 @@
     <meta name="mobile-web-app-capable" content="yes">
     <link rel="manifest" href="manifest.json">
     <title>Attendance | Filter by Class | Kiosk + Admin</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
@@ -529,6 +530,16 @@
                 <!-- Content injected via JS -->
             </div>
             <button class="btn btn-ghost" style="width: 100%; margin-top: 20px; border-radius: 16px;" onclick="closeModal()">Close</button>
+        </div>
+    </div>
+
+    <!-- Scanner Modal -->
+    <div id="scannerModal" class="modal-overlay" onclick="stopScanner()">
+        <div class="modal-content" onclick="event.stopPropagation()">
+            <h3 style="text-align: center; margin-bottom: 15px;">Scan Barcode</h3>
+            <div id="reader" style="width: 100%; border-radius: 16px; overflow: hidden; background: #000;"></div>
+            <p style="text-align: center; color: var(--text-dim); margin-top: 15px; font-size: 0.8rem;">Point camera at the student's barcode</p>
+            <button class="btn btn-ghost" style="width: 100%; margin-top: 15px;" onclick="stopScanner()">Cancel</button>
         </div>
     </div>
 
@@ -1320,33 +1331,33 @@
         let html = `
             <html>
             <head>
-                <title>Student Barcodes (Sorted by Class)</title>
+                <title>Student Barcodes (Compact 5x6)</title>
                 <style>
-                    body { font-family: 'Inter', sans-serif; padding: 20px; background: white; color: black; }
-                    .header-info { text-align: center; margin-bottom: 30px; border-bottom: 2px solid #eee; padding-bottom: 10px; }
-                    .sheet { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
-                    .card { border: 1px solid #ddd; padding: 12px; border-radius: 8px; text-align: center; page-break-inside: avoid; }
+                    body { font-family: 'Inter', sans-serif; padding: 10px; background: white; color: black; }
+                    .header-info { text-align: center; margin-bottom: 15px; border-bottom: 2px solid #eee; padding-bottom: 5px; }
+                    .sheet { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; }
+                    .card { border: 1px solid #ddd; padding: 8px; border-radius: 6px; text-align: center; page-break-inside: avoid; }
                     .card img { max-width: 100%; height: auto; display: block; margin: 0 auto; }
-                    .name { font-weight: bold; margin-top: 8px; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-                    .class { font-size: 11px; color: #555; margin-bottom: 5px; }
+                    .name { font-weight: bold; margin-top: 5px; font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+                    .class { font-size: 9px; color: #555; margin-bottom: 3px; }
                     @media print { .no-print { display: none; } }
                 </style>
             </head>
             <body>
-                <div class="no-print" style="background: #f1f5f9; padding: 15px; border-radius: 12px; margin-bottom: 30px; text-align: center; border: 1px solid #cbd5e1;">
-                    <h2 style="margin: 0 0 10px 0; color: #0f172a;">Print Barcode Sheet</h2>
-                    <p style="margin: 0 0 15px 0; font-size: 14px;">Students are sorted by **Class** then **Name**.</p>
-                    <button onclick="window.print()" style="padding: 10px 24px; font-size: 16px; cursor: pointer; background: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: 600; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);">🖨️ Print Now</button>
+                <div class="no-print" style="background: #f1f5f9; padding: 10px; border-radius: 12px; margin-bottom: 20px; text-align: center; border: 1px solid #cbd5e1;">
+                    <h2 style="margin: 0 0 5px 0; color: #0f172a; font-size: 1.2rem;">Compact Print Sheet</h2>
+                    <p style="margin: 0 0 10px 0; font-size: 12px;">5 Barcodes per row. Optimized for 30+ students per page.</p>
+                    <button onclick="window.print()" style="padding: 8px 20px; font-size: 14px; cursor: pointer; background: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: 600;">🖨️ Print Now</button>
                 </div>
                 <div class="header-info">
-                    <h1 style="margin:0;">Attendance System: Student ID Barcodes</h1>
-                    <p>Total Records: ${sortedStudents.length}</p>
+                    <h2 style="margin:0; font-size: 1.1rem;">Student ID Barcodes (Sorted by Class)</h2>
                 </div>
                 <div class="sheet">
         `;
         
         sortedStudents.forEach(s => {
-            const barcodeUrl = `https://bwipjs-api.metafloor.com/?bcid=code128&text=${s.code}&scale=3&rotate=N&includetext`;
+            // Using scale=2 for a more compact height/width balance
+            const barcodeUrl = `https://bwipjs-api.metafloor.com/?bcid=code128&text=${s.code}&scale=2&rotate=N&includetext`;
             html += `
                 <div class="card">
                     <div class="class">${s.class}</div>
@@ -1459,10 +1470,48 @@
         document.getElementById('menuSummary').onclick = () => { state.ui.adminSection = 'reports'; render(); closeSidebar(); updateNavActive(); };
         document.getElementById('themeToggleBtn').onclick = () => { toggleTheme(); closeSidebar(); showToast(`Switched to ${state.config.theme} mode`, 'success'); };
 
-        // QR Scanner Placeholder
+        // QR Scanner Implementation
+        let html5QrCode = null;
+
         document.getElementById('qrScanBtn').onclick = () => {
             vibrate(100);
-            showToast('QR Camera initializing... (Feature Ready)', 'primary');
+            document.getElementById('scannerModal').style.display = 'flex';
+            
+            html5QrCode = new Html5Qrcode("reader");
+            const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+
+            html5QrCode.start(
+                { facingMode: "environment" }, 
+                config, 
+                (decodedText) => {
+                    // Success
+                    vibrate(200);
+                    state.ui.kioskCode = decodedText;
+                    updateCodeDisplay();
+                    stopScanner();
+                    // Auto-process as 'in' or just let user tap? 
+                    // Let's auto-process if 4 digits
+                    if (decodedText.length === 4) {
+                        processAttendance('in');
+                    }
+                }
+            ).catch(err => {
+                showToast('Camera Error: ' + err, 'danger');
+                stopScanner();
+            });
+        };
+
+        window.stopScanner = () => {
+            if (html5QrCode) {
+                html5QrCode.stop().then(() => {
+                    document.getElementById('scannerModal').style.display = 'none';
+                    html5QrCode = null;
+                }).catch(() => {
+                    document.getElementById('scannerModal').style.display = 'none';
+                });
+            } else {
+                document.getElementById('scannerModal').style.display = 'none';
+            }
         };
     }
 
