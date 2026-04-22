@@ -13,25 +13,14 @@
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     
-    <!-- Firebase SDKs -->
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <!-- Supabase SDK -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <script>
-        // --- Firebase Configuration ---
-        const firebaseConfig = {
-            apiKey: "AIzaSyBtmkT8HR8Nabiht5eXfnWfDEHGrtI4HmA",
-            authDomain: "schoolattendance-12e38.firebaseapp.com",
-            projectId: "schoolattendance-12e38",
-            storageBucket: "schoolattendance-12e38.firebasestorage.app",
-            messagingSenderId: "68422984776",
-            appId: "1:68422984776:web:6059946d4c7cbb4747647d",
-            measurementId: "G-JM0YBXYE9Y"
-        };
-
-        // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
-        const db = firebase.firestore();
+        // --- Supabase Configuration ---
+        const SUPABASE_URL = "https://wuzliodvddzmhehffqfx.supabase.co";
+        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1emxpb2R2ZGR6bWhlaGZmcWZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTkxNTEsImV4cCI6MjA5MjQzNTE1MX0.0ASY-NuhdHPhyg9pB2XYiXOLJTnrocXxjkC6gpqO_vQ";
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed', err));
@@ -761,76 +750,133 @@
         sortStudents();
     }
 
-    // --- Persistence (Firestore + Local Backup) ---
+    // --- Persistence (Supabase + Local Backup) ---
     async function saveData() {
-        // We still save a local copy for offline performance
+        // Local Backup
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         
-        // Sync to Firestore (Selective updates to save bandwidth)
         try {
-            // Update Students
-            await db.collection('config').doc('students').set({ list: state.students });
-            
-            // Update Configuration
-            await db.collection('config').doc('settings').set(state.config);
-            
-            // Update Today's Attendance
-            const today = new Date().toISOString().split('T')[0];
-            if (state.attendance[today]) {
-                await db.collection('attendance').doc(today).set(state.attendance[today]);
+            // 1. Sync Students (Bulk upsert)
+            if (state.students.length > 0) {
+                const studentData = state.students.map(s => ({
+                    id: s.id,
+                    name: s.name,
+                    class: s.class,
+                    code: s.code
+                }));
+                await supabase.from('students').upsert(studentData);
             }
+
+            // 2. Sync Today's Attendance
+            const today = new Date().toISOString().split('T')[0];
+            const records = state.attendance[today];
+            if (records) {
+                const attendanceData = Object.entries(records).map(([studentId, data]) => ({
+                    student_id: studentId,
+                    date: today,
+                    sign_in: data.in,
+                    sign_out: data.out,
+                    is_late: data.late
+                }));
+                await supabase.from('attendance').upsert(attendanceData, { onConflict: 'student_id,date' });
+            }
+
+            // 3. Sync Settings
+            await supabase.from('settings').upsert({ key: 'config', value: state.config });
         } catch (e) {
-            console.warn("Cloud sync failed (offline?):", e);
+            console.warn("Supabase sync failed:", e);
         }
     }
 
     async function saveStudentRecord(studentId, record) {
         const today = new Date().toISOString().split('T')[0];
         try {
-            await db.collection('attendance').doc(today).set({
-                [studentId]: record
-            }, { merge: true });
+            await supabase.from('attendance').upsert({
+                student_id: studentId,
+                date: today,
+                sign_in: record.in,
+                sign_out: record.out,
+                is_late: record.late
+            }, { onConflict: 'student_id,date' });
             
-            // Also update local state
+            // Local update
             if (!state.attendance[today]) state.attendance[today] = {};
             state.attendance[today][studentId] = record;
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         } catch (e) {
-            console.error("Cloud save failed:", e);
+            console.error("Supabase record save failed:", e);
         }
     }
 
     async function syncAllData() {
         try {
-            showToast('Syncing with Cloud...', 'primary');
+            showToast('Connecting to Supabase...', 'primary');
             
-            // 1. Listen for Students
-            db.collection('config').doc('students').onSnapshot((doc) => {
-                if (doc.exists) {
-                    state.students = doc.data().list || [];
-                    sortStudents();
-                    render();
-                }
-            });
-
-            // 2. Listen for Today's Attendance
-            const today = new Date().toISOString().split('T')[0];
-            db.collection('attendance').doc(today).onSnapshot((doc) => {
-                if (doc.exists) {
-                    state.attendance[today] = doc.data();
-                    render();
-                }
-            });
-
-            // 3. Load Settings
-            const settings = await db.collection('config').doc('settings').get();
-            if (settings.exists) {
-                state.config = { ...state.config, ...settings.data() };
+            // 1. Fetch Students
+            const { data: studentList } = await supabase.from('students').select('*');
+            if (studentList) {
+                state.students = studentList.map(s => ({
+                    id: s.id,
+                    name: s.name,
+                    class: s.class,
+                    code: s.code
+                }));
+                sortStudents();
             }
 
-            showToast('Live Cloud Sync Active', 'success');
+            // 2. Fetch Today's Attendance
+            const today = new Date().toISOString().split('T')[0];
+            const { data: attendanceList } = await supabase.from('attendance').select('*').eq('date', today);
+            if (attendanceList) {
+                state.attendance[today] = {};
+                attendanceList.forEach(a => {
+                    state.attendance[today][a.student_id] = { in: a.sign_in, out: a.sign_out, late: a.is_late };
+                });
+            }
+
+            // 3. Fetch Settings
+            const { data: settingsData } = await supabase.from('settings').select('value').eq('key', 'config').single();
+            if (settingsData) {
+                state.config = { ...state.config, ...settingsData.value };
+            }
+
+            render();
+
+            // 4. Real-time Subscriptions
+            supabase.channel('custom-all-channel')
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, payload => {
+                    refreshStudents();
+                })
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, payload => {
+                    refreshAttendance();
+                })
+                .subscribe();
+
+            showToast('Live Supabase Sync Active', 'success');
         } catch (e) {
-            showToast('Cloud Sync Error', 'danger');
+            showToast('Supabase Sync Error', 'danger');
+            console.error(e);
+        }
+    }
+
+    async function refreshStudents() {
+        const { data } = await supabase.from('students').select('*');
+        if (data) {
+            state.students = data;
+            sortStudents();
+            render();
+        }
+    }
+
+    async function refreshAttendance() {
+        const today = new Date().toISOString().split('T')[0];
+        const { data } = await supabase.from('attendance').select('*').eq('date', today);
+        if (data) {
+            state.attendance[today] = {};
+            data.forEach(a => {
+                state.attendance[today][a.student_id] = { in: a.sign_in, out: a.sign_out, late: a.is_late };
+            });
+            render();
         }
     }
 
@@ -1066,8 +1112,8 @@
 
         state.ui.kioskCode = '';
         updateCodeDisplay();
-        saveData();
-        render(); // Update stats if in admin view
+        saveStudentRecord(student.id, record);
+        render(); 
     }
 
     // --- Admin Logic ---
