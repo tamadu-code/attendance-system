@@ -248,6 +248,39 @@
             letter-spacing: 1px;
         }
 
+        /* --- Ultra-Mobile Kiosk Fix --- */
+        @media (max-width: 430px) {
+            .app { padding: 15px; }
+            .kiosk-panel { padding: 20px 10px; min-height: auto; }
+            .live-clock { font-size: 2.8rem; margin-bottom: -5px; }
+            .live-date { font-size: 0.75rem; margin-bottom: 10px; }
+            .code-display { gap: 10px; margin-bottom: 15px; }
+            .code-dot { width: 12px; height: 12px; }
+            
+            .numeric-keypad { 
+                gap: 12px; 
+                max-width: 260px; 
+                margin-bottom: 15px;
+            }
+            .keypad-btn { 
+                font-size: 1.4rem; 
+                padding: 10px;
+            }
+            .keypad-btn.special { font-size: 1rem; }
+            
+            .kiosk-actions {
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+                margin-top: 15px;
+            }
+            .kiosk-actions .btn-scan {
+                grid-column: span 2;
+                order: -1;
+                padding: 14px;
+            }
+            .btn { padding: 14px; font-size: 0.85rem; }
+        }
+
         .btn-success {
             background: var(--success);
             color: white;
