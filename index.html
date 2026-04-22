@@ -747,6 +747,7 @@
             adminSection: 'students', 
             kioskCode: '',
             searchQuery: '',
+            filterClass: 'all',
             sortBy: 'name',
             viewDate: new Date().toISOString().split('T')[0]
         }
@@ -1112,10 +1113,12 @@
     }
 
     function renderStudentManagement() {
-        const filtered = state.students.filter(s => 
-            s.name.toLowerCase().includes(state.ui.searchQuery.toLowerCase()) ||
-            s.code.includes(state.ui.searchQuery)
-        );
+        const filtered = state.students.filter(s => {
+            const matchesSearch = s.name.toLowerCase().includes(state.ui.searchQuery.toLowerCase()) ||
+                                 s.code.includes(state.ui.searchQuery);
+            const matchesClass = state.ui.filterClass === 'all' || s.class === state.ui.filterClass;
+            return matchesSearch && matchesClass;
+        });
 
         return `
             <div class="card">
@@ -1129,9 +1132,17 @@
                         <button class="btn btn-ghost btn-sm" style="padding: 8px 12px;" onclick="downloadStudentList()">📥 Export List</button>
                     </div>
                 </div>
-                <div class="action-bar">
-                    <input type="text" class="search-input" placeholder="Search students..." value="${state.ui.searchQuery}" oninput="state.ui.searchQuery = this.value; renderAdmin()">
-                    <select class="search-input" style="min-width: 150px; flex: 0;" onchange="state.ui.sortBy = this.value; sortStudents(); renderAdmin()">
+                <div class="action-bar" style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <input type="text" class="search-input" style="flex: 1; min-width: 200px;" placeholder="Search names or codes..." value="${state.ui.searchQuery}" oninput="state.ui.searchQuery = this.value; renderAdmin()">
+                    
+                    <select class="search-input" style="flex: 1; min-width: 150px;" onchange="state.ui.filterClass = this.value; renderAdmin()">
+                        <option value="all">All Classes</option>
+                        ${[...new Set(state.students.map(s => s.class))].sort().map(c => `
+                            <option value="${c}" ${state.ui.filterClass === c ? 'selected' : ''}>${c}</option>
+                        `).join('')}
+                    </select>
+
+                    <select class="search-input" style="flex: 1; min-width: 150px;" onchange="state.ui.sortBy = this.value; sortStudents(); renderAdmin()">
                         <option value="name" ${state.ui.sortBy === 'name' ? 'selected' : ''}>Sort by Name</option>
                         <option value="class" ${state.ui.sortBy === 'class' ? 'selected' : ''}>Sort by Class</option>
                         <option value="code" ${state.ui.sortBy === 'code' ? 'selected' : ''}>Sort by Code</option>
