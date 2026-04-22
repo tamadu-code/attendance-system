@@ -1640,12 +1640,6 @@
         document.getElementById('closeSidebarBtn').onclick = closeSidebar;
         document.getElementById('sidebarOverlay').onclick = closeSidebar;
 
-        // Mobile Nav (Bottom Bar)
-        document.getElementById('navKiosk').onclick = () => {
-            state.ui.currentMode = 'kiosk';
-            updateNavActive();
-            render();
-        };
         // Kiosk Buttons
         document.getElementById('kioskSignInBtn').onclick = () => processAttendance('in');
         document.getElementById('kioskSignOutBtn').onclick = () => processAttendance('out');
