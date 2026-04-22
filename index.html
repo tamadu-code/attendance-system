@@ -756,36 +756,25 @@
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         
         try {
-            // 1. Sync Students (Bulk upsert)
-            if (state.students.length > 0) {
-                const studentData = state.students.map(s => ({
-                    id: s.id,
-                    name: s.name,
-                    class: s.class,
-                    code: s.code
-                }));
-                await supabaseClient.from('students').upsert(studentData);
-            }
-
-            // 2. Sync Today's Attendance
-            const today = new Date().toISOString().split('T')[0];
-            const records = state.attendance[today];
-            if (records) {
-                const attendanceData = Object.entries(records).map(([studentId, data]) => ({
-                    student_id: studentId,
-                    date: today,
-                    sign_in: data.in,
-                    sign_out: data.out,
-                    is_late: data.late
-                }));
-                await supabaseClient.from('attendance').upsert(attendanceData, { onConflict: 'student_id,date' });
-            }
-
-            // 3. Sync Settings
+            // 1. Sync Settings (Theme/Cutoff)
             await supabaseClient.from('settings').upsert({ key: 'config', value: state.config });
+
+            // Note: Students are synced individually during Add/Delete/Import
+            // to keep the connection fast.
         } catch (e) {
-            console.warn("Supabase sync failed:", e);
+            console.warn("Supabase background sync failed:", e);
         }
+    }
+
+    async function syncStudentsToCloud() {
+        if (state.students.length === 0) return;
+        const studentData = state.students.map(s => ({
+            id: s.id,
+            name: s.name,
+            class: s.class,
+            code: s.code
+        }));
+        await supabaseClient.from('students').upsert(studentData);
     }
 
     async function saveStudentRecord(studentId, record) {
@@ -939,6 +928,7 @@
                     added++;
                 });
 
+                syncStudentsToCloud();
                 saveData();
                 sortStudents();
                 renderAdmin();
@@ -963,10 +953,17 @@
         state.students = [];
         state.attendance = {};
         state.config.lateTime = '08:30';
-        saveData();
-        render();
-        showToast('Database reset to factory settings', 'success');
-        closeSidebar();
+        
+        // Sync reset to cloud
+        Promise.all([
+            supabaseClient.from('students').delete().neq('id', '0'), // Deletes all
+            supabaseClient.from('attendance').delete().neq('student_id', '0'),
+            saveData()
+        ]).then(() => {
+            render();
+            showToast('Database reset to factory settings', 'success');
+            closeSidebar();
+        });
     };
 
     // --- Export Logic ---
@@ -1385,6 +1382,7 @@
         }
 
         state.students.push({ id: Date.now().toString(), name, class: cls, code });
+        syncStudentsToCloud(); // Immediate cloud sync
         saveData();
         renderAdmin();
         showToast('Student added', 'success');
@@ -1398,17 +1396,26 @@
         
         student.name = name;
         student.class = cls;
+        syncStudentsToCloud(); // Immediate cloud sync
         saveData();
         renderAdmin();
         showToast('Student updated', 'success');
     };
 
-    window.deleteStudent = (id) => {
+    window.deleteStudent = async (id) => {
         if (confirm('Are you sure you want to delete this student?')) {
-            state.students = state.students.filter(s => s.id !== id);
-            saveData();
-            renderAdmin();
-            showToast('Student deleted', 'danger');
+            try {
+                // 1. Delete from Cloud
+                await supabaseClient.from('students').delete().eq('id', id);
+                
+                // 2. Update Local State
+                state.students = state.students.filter(s => s.id !== id);
+                saveData(); // Syncs other settings
+                renderAdmin();
+                showToast('Student permanently deleted', 'danger');
+            } catch (e) {
+                showToast('Delete failed. Check internet.', 'danger');
+            }
         }
     };
 
