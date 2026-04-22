@@ -11,6 +11,7 @@
     <link rel="manifest" href="manifest.json">
     <title>Attendance | Filter by Class | Kiosk + Admin</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
@@ -469,10 +470,60 @@
         }
 
         /* --- Hamburger & Sidebar --- */
-        .hamburger { display: none; } /* Hide on mobile app view */
-        .sidebar { display: none; }
+        .hamburger { 
+            display: none; 
+            flex-direction: column; 
+            gap: 5px; 
+            cursor: pointer; 
+            z-index: 2100;
+        }
+        .hamburger span { width: 24px; height: 3px; background: white; border-radius: 2px; }
+        
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: -300px;
+            width: 280px;
+            height: 100%;
+            background: var(--bg-card);
+            z-index: 2500;
+            transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 20px 0 50px rgba(0,0,0,0.5);
+            padding: 30px 20px;
+        }
+        .sidebar.open { left: 0; }
+        
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+            z-index: 2400;
+            display: none;
+        }
 
-        @media (max-width: 480px) {
+        .sidebar-menu-item {
+            padding: 14px 18px;
+            margin-bottom: 8px;
+            border-radius: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            transition: all 0.2s;
+            color: var(--text-muted);
+        }
+        .sidebar-menu-item:hover, .sidebar-menu-item.active {
+            background: rgba(59, 130, 246, 0.1);
+            color: var(--primary);
+        }
+        .sidebar-close { font-size: 2rem; cursor: pointer; text-align: right; margin-bottom: 20px; }
+
+        @media (max-width: 430px) {
             .live-clock { font-size: 3.5rem; }
             .keypad-btn { font-size: 1.5rem; }
             .app { padding: 15px; }
@@ -674,6 +725,7 @@
                 <span>📥</span> Restore (Import All)
                 <input type="file" id="restoreFile" accept=".json" hidden onchange="restoreData(this)">
             </label>
+            <div onclick="resetDatabase()" class="sidebar-menu-item" style="color: var(--danger); margin-top: 20px; border: 1px solid rgba(239, 68, 68, 0.2);"><span>⚠️</span> Reset Database</div>
         </div>
     </div>
 
@@ -776,41 +828,69 @@
 
         const reader = new FileReader();
         reader.onload = (e) => {
-            const content = e.target.result;
-            const lines = content.split(/\r?\n/).filter(l => l.trim().length > 0);
-            let added = 0;
-            let skipped = 0;
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                const rows = XLSX.utils.sheet_to_json(firstSheet);
 
-            lines.forEach((line, index) => {
-                if (index === 0 && line.toLowerCase().includes('name')) return; // Skip header
+                let added = 0;
+                let skipped = 0;
 
-                const [name, className, code] = line.split(',').map(s => s?.trim());
-                if (!name) return;
+                rows.forEach(row => {
+                    // Try to find Name, Class, Code regardless of case
+                    const name = row.Name || row.name || row.NAME || row.Student || row['Student Name'];
+                    const className = row.Class || row.class || row.CLASS || row.Grade || row.Stream;
+                    const code = row.Code || row.code || row.CODE || row.ID || row.Pin;
 
-                if (state.students.find(s => s.name.toLowerCase() === name.toLowerCase())) {
-                    skipped++;
-                    return;
-                }
+                    if (!name) return;
 
-                const finalCode = (code && /^\d{4}$/.test(code) && !state.students.find(s => s.code === code)) 
-                    ? code 
-                    : generateUniqueCode();
+                    if (state.students.find(s => s.name.toLowerCase() === name.toString().toLowerCase())) {
+                        skipped++;
+                        return;
+                    }
 
-                state.students.push({
-                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-                    name,
-                    class: className || '—',
-                    code: finalCode
+                    const finalCode = (code && /^\d{4}$/.test(code.toString()) && !state.students.find(s => s.code === code.toString())) 
+                        ? code.toString() 
+                        : generateUniqueCode();
+
+                    state.students.push({
+                        id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                        name: name.toString().trim(),
+                        class: className ? className.toString().trim() : '—',
+                        code: finalCode
+                    });
+                    added++;
                 });
-                added++;
-            });
 
-            saveData();
-            sortStudents();
-            renderAdmin();
-            showToast(`Imported ${added} students. ${skipped} skipped.`, 'success');
+                saveData();
+                sortStudents();
+                renderAdmin();
+                showToast(`Imported ${added} students. ${skipped} skipped.`, 'success');
+            } catch (err) {
+                console.error(err);
+                showToast('Error parsing file. Ensure it is a valid Excel or CSV.', 'danger');
+            }
         };
-        reader.readAsText(file);
+        reader.readAsArrayBuffer(file);
+    };
+
+    window.resetDatabase = () => {
+        if (!confirm('🛑 CRITICAL WARNING: This will permanently delete ALL students, ALL attendance records, and ALL settings. This cannot be undone. Proceed?')) return;
+        
+        const pass = prompt('Enter admin password to confirm reset:');
+        if (pass !== ADMIN_PASS) {
+            showToast('Reset cancelled: Incorrect password', 'danger');
+            return;
+        }
+
+        state.students = [];
+        state.attendance = {};
+        state.config.lateTime = '08:30';
+        saveData();
+        render();
+        showToast('Database reset to factory settings', 'success');
+        closeSidebar();
     };
 
     // --- Export Logic ---
@@ -1044,7 +1124,7 @@
                     <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                         <button class="btn btn-primary btn-sm" style="padding: 8px 12px;" onclick="showAddStudentModal()">+ Add</button>
                         <button class="btn btn-ghost btn-sm" style="padding: 8px 12px;" onclick="printBarcodeSheet()">🖨️ Print Barcodes</button>
-                        <label class="btn btn-ghost btn-sm" style="cursor:pointer; padding: 8px 12px;">📂 Bulk CSV<input type="file" id="bulkCSV" accept=".csv" hidden onchange="handleBulkUpload(this)"></label>
+                        <label class="btn btn-ghost btn-sm" style="cursor:pointer; padding: 8px 12px;">📂 Bulk Upload (Excel/CSV)<input type="file" id="bulkCSV" accept=".csv, .xlsx, .xls" hidden onchange="handleBulkUpload(this)"></label>
                         <button class="btn btn-ghost btn-sm" style="padding: 8px 12px;" onclick="downloadSampleCsv()">📄 Sample</button>
                         <button class="btn btn-ghost btn-sm" style="padding: 8px 12px;" onclick="downloadStudentList()">📥 Export List</button>
                     </div>
