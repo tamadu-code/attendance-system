@@ -694,7 +694,11 @@
             searchQuery: '',
             filterClass: 'all',
             sortBy: 'name',
-            viewDate: new Date().toISOString().split('T')[0]
+            viewDate: new Date().toISOString().split('T')[0],
+            dailySortBy: 'name',
+            dailySortDir: 'asc',
+            summarySortBy: 'name',
+            summarySortDir: 'asc'
         }
     };
 
@@ -1239,12 +1243,51 @@
 
     function renderDailyAttendance() {
         const logs = state.attendance[state.ui.viewDate] || {};
+        const sb = state.ui.dailySortBy;
+        const sd = state.ui.dailySortDir;
+
+        const statusOrder = { 'Present': 0, 'Late': 1, 'Absent': 2 };
+
+        const sorted = [...state.students].sort((a, b) => {
+            const logA = logs[a.id] || {};
+            const logB = logs[b.id] || {};
+            let valA, valB;
+            if (sb === 'name')   { valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); }
+            else if (sb === 'class')  { valA = (a.class || '').toLowerCase(); valB = (b.class || '').toLowerCase(); }
+            else if (sb === 'in')    { valA = logA.in || ''; valB = logB.in || ''; }
+            else if (sb === 'out')   { valA = logA.out || ''; valB = logB.out || ''; }
+            else if (sb === 'status') {
+                const sA = logA.in ? (logA.late ? 'Late' : 'Present') : 'Absent';
+                const sB = logB.in ? (logB.late ? 'Late' : 'Present') : 'Absent';
+                valA = statusOrder[sA]; valB = statusOrder[sB];
+            }
+            if (valA < valB) return sd === 'asc' ? -1 : 1;
+            if (valA > valB) return sd === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        function sortIcon(col) {
+            if (sb !== col) return '<span style="opacity:0.3; font-size:0.7rem;">⇅</span>';
+            return sd === 'asc' ? '<span style="font-size:0.7rem;">▲</span>' : '<span style="font-size:0.7rem;">▼</span>';
+        }
+        function thClick(col) {
+            return `onclick="state.ui.dailySortBy='${col}'; state.ui.dailySortDir=(state.ui.dailySortBy==='${col}' && state.ui.dailySortDir==='asc') ? 'desc' : 'asc'; renderAdmin()" style="cursor:pointer; user-select:none;"`;
+        }
+
         return `
             <div class="card">
                 <div class="header" style="display: flex; color: var(--text-main); margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
                     <h2 style="font-size: 1.2rem;">Daily Log: ${state.ui.viewDate}</h2>
-                    <div style="display: flex; gap: 8px;">
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                         <input type="date" class="search-input" style="padding: 8px 16px; min-width: 150px;" value="${state.ui.viewDate}" onchange="state.ui.viewDate = this.value; renderAdmin()">
+                        <select class="search-input" style="padding: 8px 12px; min-width: 140px;" onchange="state.ui.dailySortBy=this.value; renderAdmin()">
+                            <option value="name"  ${sb==='name'  ?'selected':''}>Sort: Name</option>
+                            <option value="class" ${sb==='class' ?'selected':''}>Sort: Class</option>
+                            <option value="in"    ${sb==='in'    ?'selected':''}>Sort: Sign In</option>
+                            <option value="out"   ${sb==='out'   ?'selected':''}>Sort: Sign Out</option>
+                            <option value="status" ${sb==='status'?'selected':''}>Sort: Status</option>
+                        </select>
+                        <button class="btn btn-ghost btn-sm" onclick="state.ui.dailySortDir = state.ui.dailySortDir==='asc' ? 'desc' : 'asc'; renderAdmin()" title="Toggle direction">${sd==='asc' ? '▲ Asc' : '▼ Desc'}</button>
                         <button class="btn btn-ghost btn-sm" onclick="downloadDailyCsv()">📥 CSV</button>
                         <button class="btn btn-ghost btn-sm" onclick="window.print()">🖨️ PDF</button>
                     </div>
@@ -1253,15 +1296,15 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>Student</th>
-                                <th>Class</th>
-                                <th>Sign In</th>
-                                <th>Sign Out</th>
-                                <th>Status</th>
+                                <th ${thClick('name')}>Student ${sortIcon('name')}</th>
+                                <th ${thClick('class')}>Class ${sortIcon('class')}</th>
+                                <th ${thClick('in')}>Sign In ${sortIcon('in')}</th>
+                                <th ${thClick('out')}>Sign Out ${sortIcon('out')}</th>
+                                <th ${thClick('status')}>Status ${sortIcon('status')}</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${state.students.map(s => {
+                            ${sorted.map(s => {
                                 const log = logs[s.id] || {};
                                 return `
                                     <tr>
@@ -1299,32 +1342,70 @@
             return { student, present, late, total, percent };
         });
 
+        const sb = state.ui.summarySortBy;
+        const sd = state.ui.summarySortDir;
+
+        const sorted = [...rows].sort((a, b) => {
+            let valA, valB;
+            if (sb === 'name')    { valA = a.student.name.toLowerCase(); valB = b.student.name.toLowerCase(); }
+            else if (sb === 'class')   { valA = (a.student.class || '').toLowerCase(); valB = (b.student.class || '').toLowerCase(); }
+            else if (sb === 'present') { valA = a.present; valB = b.present; }
+            else if (sb === 'late')    { valA = a.late; valB = b.late; }
+            else if (sb === 'days')    { valA = a.total; valB = b.total; }
+            else if (sb === 'rate')    { valA = a.percent; valB = b.percent; }
+            if (valA < valB) return sd === 'asc' ? -1 : 1;
+            if (valA > valB) return sd === 'asc' ? 1 : -1;
+            return 0;
+        });
+
+        function sortIcon(col) {
+            if (sb !== col) return '<span style="opacity:0.3; font-size:0.7rem;">⇅</span>';
+            return sd === 'asc' ? '<span style="font-size:0.7rem;">▲</span>' : '<span style="font-size:0.7rem;">▼</span>';
+        }
+        function thClick(col) {
+            return `onclick="state.ui.summarySortBy='${col}'; state.ui.summarySortDir=(state.ui.summarySortBy==='${col}' && state.ui.summarySortDir==='asc') ? 'desc' : 'asc'; renderAdmin()" style="cursor:pointer; user-select:none;"`;
+        }
+
         return `
             <div class="card">
-                <div class="header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <div class="header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
                     <h2 style="font-size: 1.2rem; margin:0;">Overall Summary</h2>
                     <button class="btn btn-ghost btn-sm" onclick="downloadCSV()">📥 Full Export</button>
                 </div>
-                <div class="action-bar">
-                    <div style="flex: 1">
+                <div class="action-bar" style="flex-wrap: wrap; gap: 10px;">
+                    <div style="flex: 1; min-width: 160px;">
                         <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Late Cutoff Time</label>
                         <input type="time" class="search-input" value="${state.config.lateTime}" onchange="state.config.lateTime = this.value; saveData(); showToast('Cutoff updated', 'success'); renderAdmin()">
+                    </div>
+                    <div style="flex: 1; min-width: 160px;">
+                        <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Sort By</label>
+                        <select class="search-input" onchange="state.ui.summarySortBy=this.value; renderAdmin()">
+                            <option value="name"    ${sb==='name'    ?'selected':''}>Name</option>
+                            <option value="class"   ${sb==='class'   ?'selected':''}>Class</option>
+                            <option value="present" ${sb==='present' ?'selected':''}>Present Days</option>
+                            <option value="late"    ${sb==='late'    ?'selected':''}>Late Count</option>
+                            <option value="days"    ${sb==='days'    ?'selected':''}>Total Days</option>
+                            <option value="rate"    ${sb==='rate'    ?'selected':''}>Attendance Rate</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; align-items: flex-end;">
+                        <button class="btn btn-ghost btn-sm" onclick="state.ui.summarySortDir = state.ui.summarySortDir==='asc' ? 'desc' : 'asc'; renderAdmin()" title="Toggle direction">${sd==='asc' ? '▲ Asc' : '▼ Desc'}</button>
                     </div>
                 </div>
                 <div class="table-container" style="margin-top: 20px;">
                     <table>
                         <thead>
                             <tr>
-                                <th>Student</th>
-                                <th>Class</th>
-                                <th>Present</th>
-                                <th>Late</th>
-                                <th>Days</th>
-                                <th>Rate</th>
+                                <th ${thClick('name')}>Student ${sortIcon('name')}</th>
+                                <th ${thClick('class')}>Class ${sortIcon('class')}</th>
+                                <th ${thClick('present')}>Present ${sortIcon('present')}</th>
+                                <th ${thClick('late')}>Late ${sortIcon('late')}</th>
+                                <th ${thClick('days')}>Days ${sortIcon('days')}</th>
+                                <th ${thClick('rate')}>Rate ${sortIcon('rate')}</th>
                             </tr>
                         </thead>
                         <tbody>
-                            ${rows.map(r => `
+                            ${sorted.map(r => `
                                 <tr>
                                     <td data-label="Student">${r.student.name}</td>
                                     <td data-label="Class">${r.student.class}</td>
@@ -1343,7 +1424,6 @@
                             `).join('')}
                         </tbody>
                     </table>
-                </div>
                 </div>
             </div>
         `;
