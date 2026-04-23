@@ -696,7 +696,10 @@
         config: {
             lateTime: '08:30',
             schoolName: 'Attendance Pro',
-            theme: localStorage.getItem('theme') || 'dark'
+            theme: localStorage.getItem('theme') || 'dark',
+            school_closing_time: '15:30',
+            dismissal_group_size: 20,
+            dismissal_interval_minutes: 1
         },
         ui: {
             currentMode: 'kiosk', 
@@ -1399,6 +1402,20 @@
                         <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Late Cutoff Time</label>
                         <input type="time" class="search-input" value="${state.config.lateTime}" onchange="state.config.lateTime = this.value; saveData(); showToast('Cutoff updated', 'success'); renderAdmin()">
                     </div>
+                    <div style="flex: 1; min-width: 150px;">
+                        <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">School Closing Time</label>
+                        <input type="time" class="search-input" value="${state.config.school_closing_time}" onchange="state.config.school_closing_time = this.value; saveData(); showToast('Closing time updated', 'success'); renderAdmin()">
+                    </div>
+                    <div style="flex: 1; min-width: 150px;">
+                        <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Group Size</label>
+                        <input type="number" class="search-input" value="${state.config.dismissal_group_size}" onchange="state.config.dismissal_group_size = parseInt(this.value); saveData(); showToast('Group size updated', 'success'); renderAdmin()">
+                    </div>
+                    <div style="flex: 1; min-width: 150px;">
+                        <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Interval (Min)</label>
+                        <input type="number" class="search-input" value="${state.config.dismissal_interval_minutes}" onchange="state.config.dismissal_interval_minutes = parseInt(this.value); saveData(); showToast('Interval updated', 'success'); renderAdmin()">
+                    </div>
+                </div>
+                <div class="action-bar" style="flex-wrap: wrap; gap: 10px; margin-top: 10px;">
                     <div style="flex: 1; min-width: 150px;">
                         <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Filter by Class</label>
                         <select class="search-input" onchange="state.ui.summaryFilterClass=this.value; renderAdmin()">

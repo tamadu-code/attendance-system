@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes">
+    <meta name="theme-color" content="#0a1e2f">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="School Attendance">
+    <meta name="mobile-web-app-capable" content="yes">
+    <title>Attendance | Filter by Class | Kiosk + Admin</title>
+    <style>
+        :root {
+            --primary: #3b82f6;
+            --primary-dark: #1e4a76;
+            --secondary: #0a1e2f;
+            --accent: #f97316;
+            --success: #15803d;
+            --warning: #b45309;
+            --danger: #b91c1c;
+            --bg-dark: #0a1e2f;
+            --card-bg: rgba(255, 255, 255, 0.98);
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --radius-lg: 24px;
+            --radius-md: 16px;
+            --shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background: var(--bg-dark);
+            font-family: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
+            padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+            min-height: 100vh;
+            color: white;
+            line-height: 1.5;
+        }
+
+        .app {
+            max-width: 1200px;
+            margin: 0 auto;
+            width: 100%;
+            padding: 16px;
+            padding-bottom: 80px; /* Space for bottom nav on mobile */
+        }
+
+        /* --- Header & Navigation --- */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .logo-area h1 {
+            font-size: 1.5rem;
+            font-weight: 800;
+            background: linear-gradient(to right, #60a5fa, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .mode-switch {
+            display: flex;
+            gap: 8px;
+        }
+
+        .mode-btn {
+            background: rgba(255,255,255,0.1);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.1);
+            padding: 8px 16px;
+            border-radius: 100px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            color: white;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .mode-btn.active {
+            background: var(--primary);
+            border-color: var(--primary);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+        }
+
+        .mode-btn.admin-btn.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            box-shadow: 0 4px 12px rgba(249, 115, 22, 0.4);
+        }
+
+        /* --- Cards --- */
+        .card {
+            background: var(--card-bg);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            box-shadow: var(--shadow);
+            width: 100%;
+            color: var(--text-main);
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+
+        /* --- Kiosk View --- */
+        .kiosk-panel {
+            background: linear-gradient(135deg, #0f172a, #1e293b);
+            color: white;
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .kiosk-panel::before {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: radial-gradient(circle, rgba(59, 130, 246, 0.05) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .live-clock {
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin: 10px 0;
+            font-variant-numeric: tabular-nums;
+            letter-spacing: -1px;
+        }
+
+        .live-date {
+            font-size: 1.1rem;
+            color: #94a3b8;
+            margin-bottom: 30px;
+            font-weight: 500;
+        }
+
+        .code-display {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            margin-bottom: 30px;
+        }
+
+        .code-dot {
+            width: 20px;
+            height: 20px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            transition: all 0.2s ease;
+        }
+
+        .code-dot.filled {
+            background: var(--primary);
+            border-color: var(--primary);
+            box-shadow: 0 0 15px rgba(59, 130, 246, 0.6);
+            transform: scale(1.2);
+        }
+
+        .numeric-keypad {
+            display: grid;
+            grid-template-columns: repeat(3, 80px);
+            gap: 16px;
+            justify-content: center;
+            margin: 0 auto;
+        }
+
+        .keypad-btn {
+            width: 80px;
+            height: 80px;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            color: white;
+            font-size: 1.75rem;
+            font-weight: 700;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: all 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .keypad-btn:active {
+            background: rgba(255,255,255,0.2);
+            transform: scale(0.92);
+        }
+
+        .keypad-btn.special {
+            color: var(--accent);
+            font-size: 1.2rem;
+        }
+
+        .kiosk-actions {
+            display: flex;
+            gap: 16px;
+            justify-content: center;
+            margin-top: 30px;
+        }
+
+        .btn {
+            padding: 14px 28px;
+            border-radius: 100px;
+            font-weight: 700;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .btn:active { transform: translateY(2px); }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-success { background: var(--success); color: white; }
+        .btn-warning { background: var(--warning); color: white; }
+        .btn-danger { background: var(--danger); color: white; }
+        .btn-ghost { background: transparent; color: var(--text-muted); border: 1px solid #e2e8f0; }
+
+        /* --- Admin UI --- */
+        .admin-section { display: none; }
+        .admin-section.active-section { display: block; }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: var(--radius-md);
+            border: 1px solid #f1f5f9;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .stat-label { font-size: 0.85rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
+        .stat-value { font-size: 1.8rem; font-weight: 800; color: var(--secondary); }
+
+        .action-bar {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .search-input {
+            flex: 1;
+            min-width: 250px;
+            padding: 12px 20px;
+            border-radius: 100px;
+            border: 1px solid #e2e8f0;
+            font-size: 0.95rem;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+
+        .search-input:focus { border-color: var(--primary); }
+
+        /* --- Responsive Tables --- */
+        .table-container {
+            width: 100%;
+            overflow-x: auto;
+            border-radius: var(--radius-md);
+            border: 1px solid #f1f5f9;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+            font-size: 0.95rem;
+        }
+
+        th {
+            background: #f8fafc;
+            padding: 16px;
+            text-align: left;
+            font-weight: 700;
+            color: var(--text-muted);
+            border-bottom: 2px solid #f1f5f9;
+            white-space: nowrap;
+        }
+
+        td {
+            padding: 16px;
+            border-bottom: 1px solid #f1f5f9;
+            color: var(--text-main);
+        }
+
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #fcfdfe; }
+
+        .badge {
+            padding: 4px 10px;
+            border-radius: 100px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .badge-present { background: #dcfce7; color: #166534; }
+        .badge-absent { background: #fee2e2; color: #991b1b; }
+        .badge-late { background: #fef3c7; color: #92400e; }
+
+        /* --- Hamburger Menu --- */
+        .hamburger {
+            display: none;
+            flex-direction: column;
+            gap: 5px;
+            cursor: pointer;
+            padding: 10px;
+            z-index: 1001;
+        }
+
+        .hamburger span {
+            display: block;
+            width: 24px;
+            height: 2px;
+            background: white;
+            border-radius: 2px;
+            transition: all 0.3s;
+        }
+
+        .header .hamburger span {
+            background: var(--text-main);
+        }
+
+        @media (max-width: 1024px) {
+            .hamburger { display: flex; }
+        }
+
+        /* --- Sidebar & Overlays --- */
+        .sidebar {
+            position: fixed;
+            top: 0;
+            left: -300px;
+            width: 280px;
+            height: 100%;
+            background: var(--bg-dark);
+            z-index: 1000;
+            transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            padding: 24px;
+            box-shadow: 10px 0 30px rgba(0,0,0,0.5);
+            color: white;
+        }
+
+        .sidebar.open { left: 0; }
+
+        .sidebar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .sidebar-close {
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: var(--text-muted);
+        }
+
+        .sidebar-menu-item {
+            padding: 14px 20px;
+            border-radius: var(--radius-sm);
+            margin-bottom: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            color: rgba(255,255,255,0.7);
+        }
+
+        .sidebar-menu-item:hover {
+            background: rgba(255,255,255,0.05);
+            color: white;
+        }
+
+        .sidebar-menu-item.active {
+            background: var(--primary);
+            color: white;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.6);
+            backdrop-filter: blur(4px);
+            z-index: 999;
+            display: none;
+        }
+
+        /* --- Bottom Navigation (Mobile) --- */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background: white;
+            display: none;
+            justify-content: space-around;
+            padding: 12px 0 calc(12px + env(safe-area-inset-bottom));
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+            z-index: 900;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: var(--text-muted);
+            text-decoration: none;
+            font-size: 0.7rem;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .nav-item.active { color: var(--primary); }
+        .nav-icon { font-size: 1.4rem; }
+
+        /* --- Toasts --- */
+        #toast-container {
+            position: fixed;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: 90%;
+            max-width: 400px;
+        }
+
+        .toast {
+            background: white;
+            color: var(--text-main);
+            padding: 16px 20px;
+            border-radius: var(--radius-md);
+            box-shadow: 0 10px 15px -3px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 600;
+            animation: slideDown 0.3s ease-out;
+            border-left: 4px solid var(--primary);
+        }
+
+        @keyframes slideDown {
+            from { transform: translateY(-20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* --- Responsive Queries --- */
+        @media (max-width: 768px) {
+            .live-clock { font-size: 2.8rem; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .action-bar { flex-direction: column; align-items: stretch; }
+            .search-input { min-width: 100%; }
+        }
+
+        @media (max-width: 480px) {
+            body { background: #f8fafc; color: var(--text-main); }
+            .app { padding: 12px; }
+            .card { padding: 16px; border-radius: var(--radius-md); }
+            .header { display: none; } /* Show in bottom nav instead or minimal header */
+            .bottom-nav { display: flex; }
+            
+            .kiosk-panel { margin: -12px -12px 20px -12px; border-radius: 0 0 32px 32px; padding: 40px 20px; }
+            .numeric-keypad { gap: 12px; grid-template-columns: repeat(3, 70px); }
+            .keypad-btn { width: 70px; height: 70px; font-size: 1.5rem; }
+            
+            /* Table Cards for Mobile */
+            .table-container { border: none; overflow: visible; }
+            table, thead, tbody, th, td, tr { display: block; }
+            thead { display: none; }
+            tr { 
+                background: white; 
+                margin-bottom: 16px; 
+                border-radius: var(--radius-md); 
+                padding: 16px; 
+                box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+                border: 1px solid #f1f5f9;
+            }
+            td { 
+                padding: 8px 0; 
+                border: none; 
+                display: flex; 
+                justify-content: space-between; 
+                align-items: center;
+            }
+            td::before {
+                content: attr(data-label);
+                font-weight: 700;
+                color: var(--text-muted);
+                font-size: 0.8rem;
+                text-transform: uppercase;
+            }
+            
+            .stats-grid { grid-template-columns: 1fr; }
+        }
+
+        /* --- Print Styles --- */
+        @media print {
+            body { background: white; color: black; padding: 0; }
+            .app { padding: 0; max-width: 100%; }
+            .header, .bottom-nav, .mode-switch, .kiosk-panel, .btn, .action-bar, .nav-item { display: none !important; }
+            .card { box-shadow: none; border: 1px solid #eee; padding: 0; margin: 0; }
+            .admin-section { display: block !important; }
+            .table-container { overflow: visible; }
+            table { font-size: 10pt; }
+            th, td { padding: 8px; border-bottom: 1px solid #ddd; }
+            .badge { border: 1px solid #ccc; background: transparent !important; color: black !important; }
+            .logo-area h1 { -webkit-text-fill-color: black; }
+        }
+    </style>
+</head>
+<body>
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <div class="app">
+        <div class="header">
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <div class="hamburger" id="hamburgerBtn">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <div class="logo-area">
+                    <h1>Attendance Pro</h1>
+                </div>
+            </div>
+            <div class="mode-switch">
+                <button id="kioskModeBtn" class="mode-btn active"><span>🔑</span> Kiosk</button>
+                <button id="adminModeBtn" class="mode-btn admin-btn"><span>🛡️</span> Admin</button>
+            </div>
+        </div>
+
+        <!-- KIOSK VIEW -->
+        <div id="kioskView" class="card kiosk-panel">
+            <div class="live-clock" id="liveClock">00:00:00</div>
+            <div class="live-date" id="liveDate">Wednesday, April 22</div>
+            
+            <div class="code-display" id="codeDisplay">
+                <div class="code-dot"></div>
+                <div class="code-dot"></div>
+                <div class="code-dot"></div>
+                <div class="code-dot"></div>
+            </div>
+
+            <div class="numeric-keypad" id="numericKeypad">
+                <!-- JS Populated -->
+            </div>
+
+            <div class="kiosk-actions">
+                <button id="kioskSignInBtn" class="btn btn-success">⏱️ SIGN IN</button>
+                <button id="kioskSignOutBtn" class="btn btn-warning">🚪 SIGN OUT</button>
+            </div>
+            
+            <p style="margin-top: 24px; font-size: 0.85rem; opacity: 0.7;">
+                Sign in starts at <span id="cutoffDisplay">08:30</span>. Late after that.
+            </p>
+        </div>
+
+        <!-- ADMIN VIEW -->
+        <div id="adminView" class="admin-section">
+            <div id="adminContentArea">
+                <!-- JS Populated -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Bottom Navigation (Mobile) -->
+    <div class="bottom-nav">
+        <div class="nav-item active" id="navKiosk">
+            <span class="nav-icon">🔑</span>
+            <span>Kiosk</span>
+        </div>
+        <div class="nav-item" id="navStudents">
+            <span class="nav-icon">👥</span>
+            <span>Students</span>
+        </div>
+        <div class="nav-icon" id="navAttendance" style="background: var(--primary); width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; margin-top: -30px; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);">
+            📅
+        </div>
+        <div class="nav-item" id="navSummary">
+            <span class="nav-icon">📊</span>
+            <span>Reports</span>
+        </div>
+        <div class="nav-item" id="navLogout">
+            <span class="nav-icon">🚪</span>
+            <span>Exit</span>
+        </div>
+    </div>
+
+    <!-- Sidebar (Desktop/Tablet) -->
+    <div id="sidebarOverlay" class="overlay"></div>
+    <div id="sidebar" class="sidebar">
+        <div class="sidebar-header">
+            <h2 style="font-size: 1.25rem; margin: 0;">Admin Menu</h2>
+            <div class="sidebar-close" id="closeSidebarBtn">&times;</div>
+        </div>
+        <div class="sidebar-menu">
+            <div id="menuStudentManagement" class="sidebar-menu-item"><span>👥</span> Student Management</div>
+            <div id="menuDailyAttendance" class="sidebar-menu-item"><span>📆</span> Daily Attendance</div>
+            <div id="menuSummary" class="sidebar-menu-item"><span>📊</span> Attendance Summary</div>
+        </div>
+    </div>
+
+<script>
+    // --- Constants & State ---
+    const STORAGE_KEY = 'attendance_app_v2';
+    const ADMIN_PASS = 'admin999';
+    
+    let state = {
+        students: [],
+        attendance: {},
+        config: {
+            lateTime: '08:30',
+            schoolName: 'Attendance Pro'
+        },
+        ui: {
+            currentMode: 'kiosk', 
+            adminSection: 'students', 
+            kioskCode: '',
+            searchQuery: '',
+            sortBy: 'name',
+            viewDate: new Date().toISOString().split('T')[0]
+        }
+    };
+
+    // --- Core Functions ---
+    function init() {
+        loadData();
+        startClock();
+        render();
+        setupEventListeners();
+    }
+
+    function loadData() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            const data = JSON.parse(saved);
+            state.students = data.students || [];
+            state.attendance = data.attendance || {};
+            state.config = data.config || state.config;
+            state.ui.kioskCode = '';
+            state.ui.searchQuery = '';
+        } else {
+            // Default Demo Students
+            state.students = [
+                { id: '1', name: 'Emma Johnson', class: 'Grade 5A', code: '1234' },
+                { id: '2', name: 'Michael Chen', class: 'Grade 5A', code: '5678' },
+                { id: '3', name: 'Sophia Rodriguez', class: 'Grade 5B', code: '9012' }
+            ];
+            saveData();
+        }
+        document.getElementById('cutoffDisplay').textContent = state.config.lateTime;
+        sortStudents();
+    }
+
+    function saveData() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({
+            students: state.students,
+            attendance: state.attendance,
+            config: state.config
+        }));
+    }
+
+    // --- Student Logic ---
+    function sortStudents() {
+        state.students.sort((a, b) => {
+            const valA = (a[state.ui.sortBy] || '').toLowerCase();
+            const valB = (b[state.ui.sortBy] || '').toLowerCase();
+            return valA.localeCompare(valB);
+        });
+    }
+
+    function generateUniqueCode() {
+        const existing = new Set(state.students.map(s => s.code));
+        for(let i=0; i<1000; i++) {
+            const code = Math.floor(1000 + Math.random() * 9000).toString();
+            if(!existing.has(code)) return code;
+        }
+        return Date.now().toString().slice(-4);
+    }
+
+    window.handleBulkUpload = (input) => {
+        const file = input.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const content = e.target.result;
+            const lines = content.split(/\r?\n/).filter(l => l.trim().length > 0);
+            let added = 0;
+            let skipped = 0;
+
+            lines.forEach((line, index) => {
+                if (index === 0 && line.toLowerCase().includes('name')) return; // Skip header
+
+                const [name, className, code] = line.split(',').map(s => s?.trim());
+                if (!name) return;
+
+                if (state.students.find(s => s.name.toLowerCase() === name.toLowerCase())) {
+                    skipped++;
+                    return;
+                }
+
+                const finalCode = (code && /^\d{4}$/.test(code) && !state.students.find(s => s.code === code)) 
+                    ? code 
+                    : generateUniqueCode();
+
+                state.students.push({
+                    id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+                    name,
+                    class: className || '—',
+                    code: finalCode
+                });
+                added++;
+            });
+
+            saveData();
+            sortStudents();
+            renderAdmin();
+            showToast(`Imported ${added} students. ${skipped} skipped.`, 'success');
+        };
+        reader.readAsText(file);
+    };
+
+    // --- Export Logic ---
+    window.downloadSampleCsv = () => {
+        const csv = "Name,Class,Code\nJohn Doe,Grade 1,1111\nJane Smith,Grade 1,2222";
+        downloadBlob(csv, 'sample_students.csv');
+    };
+
+    window.downloadStudentList = () => {
+        let csv = "Name,Class,Code\n";
+        state.students.forEach(s => {
+            csv += `"${s.name}","${s.class}","${s.code}"\n`;
+        });
+        downloadBlob(csv, 'student_list.csv');
+    };
+
+    window.downloadDailyCsv = () => {
+        const date = state.ui.viewDate;
+        const logs = state.attendance[date] || {};
+        let csv = "Student Name,Class,Sign In,Sign Out,Status\n";
+        
+        state.students.forEach(s => {
+            const log = logs[s.id] || {};
+            const status = log.in ? (log.late ? 'Late' : 'Present') : 'Absent';
+            csv += `"${s.name}","${s.class}","${log.in || ''}","${log.out || ''}","${status}"\n`;
+        });
+        downloadBlob(csv, `attendance_${date}.csv`);
+    };
+
+    function downloadBlob(content, filename) {
+        const blob = new Blob(["\uFEFF" + content], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    // --- UI Helpers ---
+    function showToast(message, type = 'primary') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        
+        let icon = '🔔';
+        if (type === 'success') icon = '✅';
+        if (type === 'warning') icon = '⚠️';
+        if (type === 'danger') icon = '❌';
+
+        toast.innerHTML = `<span>${icon}</span> <span>${message}</span>`;
+        container.appendChild(toast);
+
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            toast.style.transform = 'translateY(-20px)';
+            setTimeout(() => toast.remove(), 300);
+        }, 3000);
+    }
+
+    function startClock() {
+        const clockEl = document.getElementById('liveClock');
+        const dateEl = document.getElementById('liveDate');
+        
+        setInterval(() => {
+            const now = new Date();
+            clockEl.textContent = now.toLocaleTimeString([], { hour12: false });
+            dateEl.textContent = now.toLocaleDateString('en-US', { 
+                weekday: 'long', 
+                month: 'long', 
+                day: 'numeric' 
+            });
+        }, 1000);
+    }
+
+    // --- Kiosk Logic ---
+    function handleKeypad(key) {
+        if (key === 'C') {
+            state.ui.kioskCode = '';
+        } else if (key === '⌫') {
+            state.ui.kioskCode = state.ui.kioskCode.slice(0, -1);
+        } else if (state.ui.kioskCode.length < 4) {
+            state.ui.kioskCode += key;
+        }
+        updateCodeDisplay();
+    }
+
+    function updateCodeDisplay() {
+        const dots = document.querySelectorAll('.code-dot');
+        dots.forEach((dot, i) => {
+            dot.classList.toggle('filled', i < state.ui.kioskCode.length);
+        });
+    }
+
+    function processAttendance(type) {
+        const code = state.ui.kioskCode;
+        if (code.length < 4) {
+            showToast('Please enter your 4-digit code', 'warning');
+            return;
+        }
+
+        const student = state.students.find(s => s.code === code);
+        if (!student) {
+            showToast('Student code not found', 'danger');
+            state.ui.kioskCode = '';
+            updateCodeDisplay();
+            return;
+        }
+
+        const today = new Date().toISOString().split('T')[0];
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
+
+        if (!state.attendance[today]) state.attendance[today] = {};
+        if (!state.attendance[today][student.id]) {
+            state.attendance[today][student.id] = { in: null, out: null, late: false };
+        }
+
+        const record = state.attendance[today][student.id];
+
+        if (type === 'in') {
+            if (record.in) {
+                showToast(`${student.name} already signed in today`, 'warning');
+            } else {
+                record.in = timeStr;
+                record.late = timeStr > state.config.lateTime;
+                showToast(`${student.name} signed IN at ${timeStr}${record.late ? ' (LATE)' : ''}`, 'success');
+            }
+        } else {
+            if (!record.in) {
+                showToast('Please sign in before signing out', 'warning');
+            } else if (record.out) {
+                showToast(`${student.name} already signed out today`, 'warning');
+            } else {
+                record.out = timeStr;
+                showToast(`${student.name} signed OUT at ${timeStr}`, 'success');
+            }
+        }
+
+        state.ui.kioskCode = '';
+        updateCodeDisplay();
+        saveData();
+        render(); // Update stats if in admin view
+    }
+
+    // --- Admin Logic ---
+    function render() {
+        if (state.ui.currentMode === 'admin') {
+            renderAdmin();
+        } else {
+            renderKiosk();
+        }
+    }
+
+    function renderKiosk() {
+        document.getElementById('kioskView').style.display = 'block';
+        document.getElementById('adminView').style.display = 'none';
+        
+        // Populate keypad
+        const keypad = document.getElementById('numericKeypad');
+        keypad.innerHTML = '';
+        ['1', '2', '3', '4', '5', '6', '7', '8', '9', '⌫', '0', 'C'].forEach(key => {
+            const btn = document.createElement('button');
+            btn.className = 'keypad-btn' + (isNaN(key) ? ' special' : '');
+            btn.textContent = key;
+            btn.onclick = () => handleKeypad(key);
+            keypad.appendChild(btn);
+        });
+    }
+
+    function renderAdmin() {
+        document.getElementById('kioskView').style.display = 'none';
+        document.getElementById('adminView').style.display = 'block';
+        
+        const container = document.getElementById('adminContentArea');
+        const today = new Date().toISOString().split('T')[0];
+        const todayLogs = state.attendance[today] || {};
+        
+        // Calculate Stats for Today
+        const total = state.students.length;
+        const present = Object.values(todayLogs).filter(l => l.in).length;
+        const late = Object.values(todayLogs).filter(l => l.late).length;
+        const absent = total - present;
+
+        let html = `
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <span class="stat-label">Total Students</span>
+                    <span class="stat-value">${total}</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Present</span>
+                    <span class="stat-value" style="color: var(--success)">${present}</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Absent</span>
+                    <span class="stat-value" style="color: var(--danger)">${absent}</span>
+                </div>
+                <div class="stat-card">
+                    <span class="stat-label">Late</span>
+                    <span class="stat-value" style="color: var(--accent)">${late}</span>
+                </div>
+            </div>
+        `;
+
+        if (state.ui.adminSection === 'students') {
+            html += renderStudentManagement();
+        } else if (state.ui.adminSection === 'attendance') {
+            html += renderDailyAttendance();
+        } else if (state.ui.adminSection === 'reports') {
+            html += renderSummary();
+        }
+
+        container.innerHTML = html;
+    }
+
+    function renderStudentManagement() {
+        const filtered = state.students.filter(s => 
+            s.name.toLowerCase().includes(state.ui.searchQuery.toLowerCase()) ||
+            s.code.includes(state.ui.searchQuery)
+        );
+
+        return `
+            <div class="card">
+                <div class="header" style="display: flex; justify-content: space-between; align-items: center; color: var(--text-main); margin-bottom: 20px; flex-wrap: wrap; gap: 15px;">
+                    <h2 style="font-size: 1.2rem; margin: 0;">Manage Students</h2>
+                    <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                        <button class="btn btn-primary btn-sm" style="padding: 8px 12px;" onclick="showAddStudentModal()">+ Add</button>
+                        <label class="btn btn-ghost btn-sm" style="cursor:pointer; padding: 8px 12px;">📂 Bulk CSV<input type="file" id="bulkCSV" accept=".csv" hidden onchange="handleBulkUpload(this)"></label>
+                        <button class="btn btn-ghost btn-sm" style="padding: 8px 12px;" onclick="downloadSampleCsv()">📄 Sample</button>
+                        <button class="btn btn-ghost btn-sm" style="padding: 8px 12px;" onclick="downloadStudentList()">📥 Export List</button>
+                    </div>
+                </div>
+                <div class="action-bar">
+                    <input type="text" class="search-input" placeholder="Search students..." value="${state.ui.searchQuery}" oninput="state.ui.searchQuery = this.value; renderAdmin()">
+                    <select class="search-input" style="min-width: 150px; flex: 0;" onchange="state.ui.sortBy = this.value; sortStudents(); renderAdmin()">
+                        <option value="name" ${state.ui.sortBy === 'name' ? 'selected' : ''}>Sort by Name</option>
+                        <option value="class" ${state.ui.sortBy === 'class' ? 'selected' : ''}>Sort by Class</option>
+                        <option value="code" ${state.ui.sortBy === 'code' ? 'selected' : ''}>Sort by Code</option>
+                    </select>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Class</th>
+                                <th>Code</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${filtered.length ? filtered.map(s => `
+                                <tr>
+                                    <td data-label="Name">${s.name}</td>
+                                    <td data-label="Class">${s.class}</td>
+                                    <td data-label="Code"><code style="background: #f1f5f9; padding: 2px 6px; border-radius: 4px;">${s.code}</code></td>
+                                    <td data-label="Actions">
+                                        <button class="btn btn-ghost btn-sm" onclick="editStudent('${s.id}')">✏️</button>
+                                        <button class="btn btn-ghost btn-sm" style="color: var(--danger)" onclick="deleteStudent('${s.id}')">🗑️</button>
+                                    </td>
+                                </tr>
+                            `).join('') : '<tr><td colspan="4" style="text-align:center; padding: 40px; color: var(--text-muted);">No students found.</td></tr>'}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderDailyAttendance() {
+        const logs = state.attendance[state.ui.viewDate] || {};
+        return `
+            <div class="card">
+                <div class="header" style="display: flex; color: var(--text-main); margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
+                    <h2 style="font-size: 1.2rem;">Daily Log: ${state.ui.viewDate}</h2>
+                    <div style="display: flex; gap: 8px;">
+                        <input type="date" class="search-input" style="padding: 8px 16px; min-width: 150px;" value="${state.ui.viewDate}" onchange="state.ui.viewDate = this.value; renderAdmin()">
+                        <button class="btn btn-ghost btn-sm" onclick="downloadDailyCsv()">📥 Export CSV</button>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Student</th>
+                                <th>Sign In</th>
+                                <th>Sign Out</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${state.students.map(s => {
+                                const log = logs[s.id] || {};
+                                return `
+                                    <tr>
+                                        <td data-label="Student">${s.name}<br><small style="color: var(--text-muted)">${s.class}</small></td>
+                                        <td data-label="Sign In">${log.in || '—'}</td>
+                                        <td data-label="Sign Out">${log.out || '—'}</td>
+                                        <td data-label="Status">
+                                            ${log.in ? 
+                                                (log.late ? '<span class="badge badge-late">Late</span>' : '<span class="badge badge-present">On Time</span>') : 
+                                                '<span class="badge badge-absent">Absent</span>'}
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+
+    function renderSummary() {
+        const allDates = Object.keys(state.attendance);
+        const rows = state.students.map(student => {
+            let present = 0, late = 0, total = allDates.length;
+            allDates.forEach(date => {
+                const rec = state.attendance[date][student.id];
+                if (rec && rec.in) {
+                    present++;
+                    if (rec.late) late++;
+                }
+            });
+            const percent = total === 0 ? 0 : Math.round((present / total) * 100);
+            return { student, present, late, total, percent };
+        });
+
+        return `
+            <div class="card">
+                <div class="header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="font-size: 1.2rem; margin:0;">Overall Summary</h2>
+                    <button class="btn btn-ghost btn-sm" onclick="downloadCSV()">📥 Full Export</button>
+                </div>
+                <div class="action-bar">
+                    <div style="flex: 1">
+                        <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Late Cutoff Time</label>
+                        <input type="time" class="search-input" value="${state.config.lateTime}" onchange="state.config.lateTime = this.value; saveData(); showToast('Cutoff updated', 'success'); renderAdmin()">
+                    </div>
+                </div>
+                <div class="table-container" style="margin-top: 20px;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Student</th>
+                                <th>Present</th>
+                                <th>Late</th>
+                                <th>Days</th>
+                                <th>Rate</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rows.map(r => `
+                                <tr>
+                                    <td data-label="Student">${r.student.name}</td>
+                                    <td data-label="Present">${r.present}</td>
+                                    <td data-label="Late">${r.late}</td>
+                                    <td data-label="Days">${r.total}</td>
+                                    <td data-label="Rate">
+                                        <div style="display: flex; align-items: center; gap: 8px;">
+                                            <div style="flex: 1; height: 8px; background: #f1f5f9; border-radius: 4px; overflow: hidden; min-width: 60px;">
+                                                <div style="width: ${r.percent}%; height: 100%; background: var(--primary);"></div>
+                                            </div>
+                                            <span>${r.percent}%</span>
+                                        </div>
+                                    </td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 20px;">
+                    <button class="btn btn-ghost btn-sm" onclick="clearAllData()" style="color: var(--danger)">⚠️ Clear All System Data</button>
+                </div>
+            </div>
+        `;
+    }
+
+    // --- Admin Actions ---
+    window.showAddStudentModal = () => {
+        const name = prompt('Student Full Name:');
+        if (!name) return;
+        const cls = prompt('Class/Grade:');
+        const code = prompt('4-Digit Code (leave blank for random):') || Math.floor(1000 + Math.random() * 9000).toString();
+        
+        if (state.students.find(s => s.code === code)) {
+            showToast('Code already in use', 'danger');
+            return;
+        }
+
+        state.students.push({ id: Date.now().toString(), name, class: cls, code });
+        saveData();
+        renderAdmin();
+        showToast('Student added', 'success');
+    };
+
+    window.editStudent = (id) => {
+        const student = state.students.find(s => s.id === id);
+        const name = prompt('Edit Name:', student.name);
+        if (!name) return;
+        const cls = prompt('Edit Class:', student.class);
+        
+        student.name = name;
+        student.class = cls;
+        saveData();
+        renderAdmin();
+        showToast('Student updated', 'success');
+    };
+
+    window.deleteStudent = (id) => {
+        if (confirm('Are you sure you want to delete this student?')) {
+            state.students = state.students.filter(s => s.id !== id);
+            saveData();
+            renderAdmin();
+            showToast('Student deleted', 'danger');
+        }
+    };
+
+    window.downloadCSV = () => {
+        let csv = 'Name,Class,Code,Date,Status,In,Out\n';
+        Object.keys(state.attendance).forEach(date => {
+            state.students.forEach(s => {
+                const log = state.attendance[date][s.id] || {};
+                const status = log.in ? (log.late ? 'Late' : 'Present') : 'Absent';
+                csv += `"${s.name}","${s.class}","${s.code}","${date}","${status}","${log.in || ''}","${log.out || ''}"\n`;
+            });
+        });
+        
+        const blob = new Blob([csv], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `attendance_report_${new Date().toISOString().split('T')[0]}.csv`;
+        a.click();
+    };
+
+    window.clearAllData = () => {
+        if (confirm('EXTREME DANGER: This will delete ALL students and attendance records. Continue?')) {
+            localStorage.removeItem(STORAGE_KEY);
+            location.reload();
+        }
+    };
+
+    // --- Navigation Logic ---
+    function setupEventListeners() {
+        // Mode Switches
+        document.getElementById('kioskModeBtn').onclick = () => {
+            state.ui.currentMode = 'kiosk';
+            updateNavActive();
+            render();
+        };
+
+        document.getElementById('adminModeBtn').onclick = () => {
+            const pass = prompt('Enter Admin Password:');
+            if (pass === ADMIN_PASS) {
+                state.ui.currentMode = 'admin';
+                updateNavActive();
+                render();
+                showToast('Admin Access Granted', 'success');
+            } else {
+                showToast('Invalid Password', 'danger');
+            }
+        };
+
+        // Hamburger Menu Toggle
+        document.getElementById('hamburgerBtn').onclick = openSidebar;
+        document.getElementById('closeSidebarBtn').onclick = closeSidebar;
+        document.getElementById('sidebarOverlay').onclick = closeSidebar;
+
+        // Mobile Nav (Bottom Bar)
+        document.getElementById('navKiosk').onclick = () => {
+            state.ui.currentMode = 'kiosk';
+            updateNavActive();
+            render();
+        };
+        document.getElementById('navStudents').onclick = () => {
+            if (checkAdmin()) {
+                state.ui.currentMode = 'admin';
+                state.ui.adminSection = 'students';
+                updateNavActive();
+                render();
+            }
+        };
+        document.getElementById('navAttendance').onclick = () => {
+            if (checkAdmin()) {
+                state.ui.currentMode = 'admin';
+                state.ui.adminSection = 'attendance';
+                updateNavActive();
+                render();
+            }
+        };
+        document.getElementById('navSummary').onclick = () => {
+            if (checkAdmin()) {
+                state.ui.currentMode = 'admin';
+                state.ui.adminSection = 'reports';
+                updateNavActive();
+                render();
+            }
+        };
+        document.getElementById('navLogout').onclick = () => {
+            state.ui.currentMode = 'kiosk';
+            updateNavActive();
+            render();
+            showToast('Logged Out', 'primary');
+        };
+
+        // Kiosk Buttons
+        document.getElementById('kioskSignInBtn').onclick = () => processAttendance('in');
+        document.getElementById('kioskSignOutBtn').onclick = () => processAttendance('out');
+
+        // Sidebar Menu Items
+        document.getElementById('menuStudentManagement').onclick = () => { state.ui.adminSection = 'students'; render(); closeSidebar(); updateNavActive(); };
+        document.getElementById('menuDailyAttendance').onclick = () => { state.ui.adminSection = 'attendance'; render(); closeSidebar(); updateNavActive(); };
+        document.getElementById('menuSummary').onclick = () => { state.ui.adminSection = 'reports'; render(); closeSidebar(); updateNavActive(); };
+    }
+
+    function checkAdmin() {
+        if (state.ui.currentMode !== 'admin') {
+            const pass = prompt('Admin password required:');
+            if (pass === ADMIN_PASS) {
+                state.ui.currentMode = 'admin';
+                return true;
+            }
+            showToast('Access Denied', 'danger');
+            return false;
+        }
+        return true;
+    }
+
+    function updateNavActive() {
+        const items = document.querySelectorAll('.nav-item, .sidebar-menu-item');
+        items.forEach(i => i.classList.remove('active'));
+        
+        // Show/Hide Hamburger based on mode
+        const hamburger = document.getElementById('hamburgerBtn');
+        hamburger.style.display = state.ui.currentMode === 'admin' ? 'flex' : 'none';
+
+        if (state.ui.currentMode === 'kiosk') {
+            document.getElementById('navKiosk').classList.add('active');
+            document.getElementById('kioskModeBtn').classList.add('active');
+            document.getElementById('adminModeBtn').classList.remove('active');
+        } else {
+            document.getElementById('kioskModeBtn').classList.remove('active');
+            document.getElementById('adminModeBtn').classList.add('active');
+            
+            if (state.ui.adminSection === 'students') {
+                document.getElementById('navStudents')?.classList.add('active');
+                document.getElementById('menuStudentManagement')?.classList.add('active');
+            }
+            if (state.ui.adminSection === 'attendance') {
+                document.getElementById('navAttendance')?.classList.add('active');
+                document.getElementById('menuDailyAttendance')?.classList.add('active');
+            }
+            if (state.ui.adminSection === 'reports') {
+                document.getElementById('navSummary')?.classList.add('active');
+                document.getElementById('menuSummary')?.classList.add('active');
+            }
+        }
+    }
+
+    function openSidebar() {
+        document.getElementById('sidebar').classList.add('open');
+        document.getElementById('sidebarOverlay').style.display = 'block';
+    }
+
+    function closeSidebar() {
+        document.getElementById('sidebar').classList.remove('open');
+        document.getElementById('sidebarOverlay').style.display = 'none';
+    }
+
+    // Start App
+    init();
+</script>
+</body>
+</html>
