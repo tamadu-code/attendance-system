@@ -237,8 +237,8 @@
         }
 
         .kiosk-actions {
-            display: grid;
-            grid-template-columns: 1fr auto 1fr;
+            display: flex;
+            justify-content: center;
             gap: 12px;
             margin-top: 20px;
         }
@@ -635,9 +635,7 @@
             </div>
 
             <div class="kiosk-actions">
-                <button id="kioskSignInBtn" class="btn btn-success">⏱️ SIGN IN</button>
-                <button id="qrScanBtn" class="btn btn-ghost" style="border-radius: 50%; width: 48px; height: 48px; padding: 0; justify-content: center;">📷</button>
-                <button id="kioskSignOutBtn" class="btn btn-warning">🚪 SIGN OUT</button>
+                <button id="qrScanBtn" class="btn btn-ghost" style="border-radius: 50%; width: 56px; height: 56px; padding: 0; justify-content: center; font-size: 1.5rem;">📷</button>
             </div>
             
             <p style="margin-top: 24px; font-size: 0.85rem; opacity: 0.7;">
@@ -671,7 +669,6 @@
                 <span>📥</span> Restore (Import All)
                 <input type="file" id="restoreFile" accept=".json" hidden onchange="restoreData(this)">
             </label>
-            <div onclick="resetDatabase()" class="sidebar-menu-item" style="color: var(--danger); margin-top: 10px; border: 1px solid rgba(239, 68, 68, 0.1);"><span>⚠️</span> Reset Database</div>
             <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 12px 0;">
             <div id="menuExitAdmin" class="sidebar-menu-item"><span>🚪</span> Exit Admin Panel</div>
         </div>
@@ -940,30 +937,6 @@
         reader.readAsArrayBuffer(file);
     };
 
-    window.resetDatabase = () => {
-        if (!confirm('🛑 CRITICAL WARNING: This will permanently delete ALL students, ALL attendance records, and ALL settings. This cannot be undone. Proceed?')) return;
-        
-        const pass = prompt('Enter admin password to confirm reset:');
-        if (pass !== ADMIN_PASS) {
-            showToast('Reset cancelled: Incorrect password', 'danger');
-            return;
-        }
-
-        state.students = [];
-        state.attendance = {};
-        state.config.lateTime = '08:30';
-        
-        // Sync reset to cloud
-        Promise.all([
-            supabaseClient.from('students').delete().neq('id', '0'), // Deletes all
-            supabaseClient.from('attendance').delete().neq('student_id', '0'),
-            saveData()
-        ]).then(() => {
-            render();
-            showToast('Database reset to factory settings', 'success');
-            closeSidebar();
-        });
-    };
 
     // --- Export Logic ---
     window.downloadSampleCsv = () => {
@@ -1051,6 +1024,9 @@
             state.ui.kioskCode = state.ui.kioskCode.slice(0, -1);
         } else if (state.ui.kioskCode.length < 4) {
             state.ui.kioskCode += key;
+            if (state.ui.kioskCode.length === 4) {
+                setTimeout(() => processAttendance(), 300); // Small delay for visual feedback
+            }
         }
         updateCodeDisplay();
     }
@@ -1072,7 +1048,7 @@
         });
     }
 
-    function processAttendance(type) {
+    function processAttendance() {
         const code = state.ui.kioskCode;
         if (code.length < 4) {
             showToast('Please enter your 4-digit code', 'warning');
@@ -1099,25 +1075,22 @@
 
         const record = state.attendance[today][student.id];
 
-        if (type === 'in') {
-            if (record.in) {
-                showToast(`${student.name} already signed in today`, 'warning');
-            } else {
-                record.in = timeStr;
-                record.late = timeStr > state.config.lateTime;
-                vibrate([100, 50, 100]); // Happy pattern on success
-                showToast(`${student.name} signed IN at ${timeStr}${record.late ? ' (LATE)' : ''}`, 'success');
-            }
+        // Logical Toggle: Sign In -> Sign Out -> Already Done
+        if (!record.in) {
+            // Sign In
+            record.in = timeStr;
+            record.late = timeStr > state.config.lateTime;
+            vibrate([100, 50, 100]); // Happy pattern on success
+            showToast(`${student.name} signed IN at ${timeStr}${record.late ? ' (LATE)' : ''}`, 'success');
+        } else if (!record.out) {
+            // Sign Out
+            record.out = timeStr;
+            vibrate([100, 50, 100]); // Happy pattern on success
+            showToast(`${student.name} signed OUT at ${timeStr}`, 'success');
         } else {
-            if (!record.in) {
-                showToast('Please sign in before signing out', 'warning');
-            } else if (record.out) {
-                showToast(`${student.name} already signed out today`, 'warning');
-            } else {
-                record.out = timeStr;
-                vibrate([100, 50, 100]); // Happy pattern on success
-                showToast(`${student.name} signed OUT at ${timeStr}`, 'success');
-            }
+            // Already Signed Out
+            vibrate(200);
+            showToast(`${student.name} already signed out for today`, 'warning');
         }
 
         state.ui.kioskCode = '';
@@ -1371,8 +1344,6 @@
                         </tbody>
                     </table>
                 </div>
-                <div style="margin-top: 20px;">
-                    <button class="btn btn-ghost btn-sm" onclick="clearAllData()" style="color: var(--danger)">⚠️ Clear All System Data</button>
                 </div>
             </div>
         `;
@@ -1616,12 +1587,6 @@
         a.click();
     };
 
-    window.clearAllData = () => {
-        if (confirm('EXTREME DANGER: This will delete ALL students and attendance records. Continue?')) {
-            localStorage.removeItem(STORAGE_KEY);
-            location.reload();
-        }
-    };
 
     // --- Navigation Logic ---
     function setupEventListeners() {
@@ -1649,9 +1614,6 @@
         document.getElementById('closeSidebarBtn').onclick = closeSidebar;
         document.getElementById('sidebarOverlay').onclick = closeSidebar;
 
-        // Kiosk Buttons
-        document.getElementById('kioskSignInBtn').onclick = () => processAttendance('in');
-        document.getElementById('kioskSignOutBtn').onclick = () => processAttendance('out');
 
         // Sidebar Menu Items
         document.getElementById('menuStudentManagement').onclick = () => { state.ui.adminSection = 'students'; render(); closeSidebar(); updateNavActive(); };
@@ -1684,23 +1646,10 @@
                     vibrate(200);
                     
                     // Logic to toggle In/Out
-                    const today = new Date().toISOString().split('T')[0];
-                    const student = state.students.find(s => s.code === decodedText);
-                    
                     state.ui.kioskCode = decodedText;
                     updateCodeDisplay();
                     stopScanner();
-
-                    if (student) {
-                        const record = state.attendance[today] ? state.attendance[today][student.id] : null;
-                        
-                        // Smart toggle: If already in but not out, sign them out.
-                        const type = (record && record.in && !record.out) ? 'out' : 'in';
-                        
-                        processAttendance(type);
-                    } else {
-                        showToast('Invalid Code: ' + decodedText, 'danger');
-                    }
+                    processAttendance();
                 }
             ).catch(err => {
                 showToast('Camera Error: ' + err, 'danger');
