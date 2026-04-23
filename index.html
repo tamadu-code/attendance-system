@@ -340,12 +340,23 @@
             border: 1px solid var(--border-glass);
             padding: 14px 20px;
             border-radius: 16px;
-            color: white;
+            color: var(--text-main);
             font-size: 0.9rem;
             outline: none;
         }
 
         .search-input:focus { border-color: var(--primary); }
+
+        /* Ensure select options are always readable */
+        select.search-input option {
+            background: var(--bg-card);
+            color: var(--text-main);
+        }
+
+        body.light-theme select.search-input option {
+            background: #ffffff;
+            color: #0f172a;
+        }
 
         /* --- Responsive Table --- */
         .table-container {
@@ -697,8 +708,10 @@
             viewDate: new Date().toISOString().split('T')[0],
             dailySortBy: 'name',
             dailySortDir: 'asc',
+            dailyFilterClass: 'all',
             summarySortBy: 'name',
-            summarySortDir: 'asc'
+            summarySortDir: 'asc',
+            summaryFilterClass: 'all'
         }
     };
 
@@ -1245,17 +1258,21 @@
         const logs = state.attendance[state.ui.viewDate] || {};
         const sb = state.ui.dailySortBy;
         const sd = state.ui.dailySortDir;
+        const fc = state.ui.dailyFilterClass;
+        const allClasses = [...new Set(state.students.map(s => s.class))].sort();
 
         const statusOrder = { 'Present': 0, 'Late': 1, 'Absent': 2 };
 
-        const sorted = [...state.students].sort((a, b) => {
+        const filtered = state.students.filter(s => fc === 'all' || s.class === fc);
+
+        const sorted = [...filtered].sort((a, b) => {
             const logA = logs[a.id] || {};
             const logB = logs[b.id] || {};
             let valA, valB;
-            if (sb === 'name')   { valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); }
+            if (sb === 'name')        { valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); }
             else if (sb === 'class')  { valA = (a.class || '').toLowerCase(); valB = (b.class || '').toLowerCase(); }
-            else if (sb === 'in')    { valA = logA.in || ''; valB = logB.in || ''; }
-            else if (sb === 'out')   { valA = logA.out || ''; valB = logB.out || ''; }
+            else if (sb === 'in')     { valA = logA.in || ''; valB = logB.in || ''; }
+            else if (sb === 'out')    { valA = logA.out || ''; valB = logB.out || ''; }
             else if (sb === 'status') {
                 const sA = logA.in ? (logA.late ? 'Late' : 'Present') : 'Absent';
                 const sB = logB.in ? (logB.late ? 'Late' : 'Present') : 'Absent';
@@ -1280,11 +1297,15 @@
                     <h2 style="font-size: 1.2rem;">Daily Log: ${state.ui.viewDate}</h2>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
                         <input type="date" class="search-input" style="padding: 8px 16px; min-width: 150px;" value="${state.ui.viewDate}" onchange="state.ui.viewDate = this.value; renderAdmin()">
+                        <select class="search-input" style="padding: 8px 12px; min-width: 130px;" onchange="state.ui.dailyFilterClass=this.value; renderAdmin()">
+                            <option value="all" ${fc==='all'?'selected':''}>All Classes</option>
+                            ${allClasses.map(c => `<option value="${c}" ${fc===c?'selected':''}>${c}</option>`).join('')}
+                        </select>
                         <select class="search-input" style="padding: 8px 12px; min-width: 140px;" onchange="state.ui.dailySortBy=this.value; renderAdmin()">
-                            <option value="name"  ${sb==='name'  ?'selected':''}>Sort: Name</option>
-                            <option value="class" ${sb==='class' ?'selected':''}>Sort: Class</option>
-                            <option value="in"    ${sb==='in'    ?'selected':''}>Sort: Sign In</option>
-                            <option value="out"   ${sb==='out'   ?'selected':''}>Sort: Sign Out</option>
+                            <option value="name"   ${sb==='name'  ?'selected':''}>Sort: Name</option>
+                            <option value="class"  ${sb==='class' ?'selected':''}>Sort: Class</option>
+                            <option value="in"     ${sb==='in'    ?'selected':''}>Sort: Sign In</option>
+                            <option value="out"    ${sb==='out'   ?'selected':''}>Sort: Sign Out</option>
                             <option value="status" ${sb==='status'?'selected':''}>Sort: Status</option>
                         </select>
                         <button class="btn btn-ghost btn-sm" onclick="state.ui.dailySortDir = state.ui.dailySortDir==='asc' ? 'desc' : 'asc'; renderAdmin()" title="Toggle direction">${sd==='asc' ? '▲ Asc' : '▼ Desc'}</button>
@@ -1304,7 +1325,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            ${sorted.map(s => {
+                            ${sorted.length ? sorted.map(s => {
                                 const log = logs[s.id] || {};
                                 return `
                                     <tr>
@@ -1319,7 +1340,7 @@
                                         </td>
                                     </tr>
                                 `;
-                            }).join('')}
+                            }).join('') : '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);">No students in this class.</td></tr>'}
                         </tbody>
                     </table>
                 </div>
@@ -1329,25 +1350,26 @@
 
     function renderSummary() {
         const allDates = Object.keys(state.attendance);
-        const rows = state.students.map(student => {
-            let present = 0, late = 0, total = allDates.length;
-            allDates.forEach(date => {
-                const rec = state.attendance[date][student.id];
-                if (rec && rec.in) {
-                    present++;
-                    if (rec.late) late++;
-                }
-            });
-            const percent = total === 0 ? 0 : Math.round((present / total) * 100);
-            return { student, present, late, total, percent };
-        });
-
         const sb = state.ui.summarySortBy;
         const sd = state.ui.summarySortDir;
+        const fc = state.ui.summaryFilterClass;
+        const allClasses = [...new Set(state.students.map(s => s.class))].sort();
+
+        const rows = state.students
+            .filter(student => fc === 'all' || student.class === fc)
+            .map(student => {
+                let present = 0, late = 0, total = allDates.length;
+                allDates.forEach(date => {
+                    const rec = state.attendance[date][student.id];
+                    if (rec && rec.in) { present++; if (rec.late) late++; }
+                });
+                const percent = total === 0 ? 0 : Math.round((present / total) * 100);
+                return { student, present, late, total, percent };
+            });
 
         const sorted = [...rows].sort((a, b) => {
             let valA, valB;
-            if (sb === 'name')    { valA = a.student.name.toLowerCase(); valB = b.student.name.toLowerCase(); }
+            if (sb === 'name')         { valA = a.student.name.toLowerCase(); valB = b.student.name.toLowerCase(); }
             else if (sb === 'class')   { valA = (a.student.class || '').toLowerCase(); valB = (b.student.class || '').toLowerCase(); }
             else if (sb === 'present') { valA = a.present; valB = b.present; }
             else if (sb === 'late')    { valA = a.late; valB = b.late; }
@@ -1373,11 +1395,18 @@
                     <button class="btn btn-ghost btn-sm" onclick="downloadCSV()">📥 Full Export</button>
                 </div>
                 <div class="action-bar" style="flex-wrap: wrap; gap: 10px;">
-                    <div style="flex: 1; min-width: 160px;">
+                    <div style="flex: 1; min-width: 150px;">
                         <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Late Cutoff Time</label>
                         <input type="time" class="search-input" value="${state.config.lateTime}" onchange="state.config.lateTime = this.value; saveData(); showToast('Cutoff updated', 'success'); renderAdmin()">
                     </div>
-                    <div style="flex: 1; min-width: 160px;">
+                    <div style="flex: 1; min-width: 150px;">
+                        <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Filter by Class</label>
+                        <select class="search-input" onchange="state.ui.summaryFilterClass=this.value; renderAdmin()">
+                            <option value="all" ${fc==='all'?'selected':''}>All Classes</option>
+                            ${allClasses.map(c => `<option value="${c}" ${fc===c?'selected':''}>${c}</option>`).join('')}
+                        </select>
+                    </div>
+                    <div style="flex: 1; min-width: 150px;">
                         <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Sort By</label>
                         <select class="search-input" onchange="state.ui.summarySortBy=this.value; renderAdmin()">
                             <option value="name"    ${sb==='name'    ?'selected':''}>Name</option>
@@ -1389,7 +1418,7 @@
                         </select>
                     </div>
                     <div style="display: flex; align-items: flex-end;">
-                        <button class="btn btn-ghost btn-sm" onclick="state.ui.summarySortDir = state.ui.summarySortDir==='asc' ? 'desc' : 'asc'; renderAdmin()" title="Toggle direction">${sd==='asc' ? '▲ Asc' : '▼ Desc'}</button>
+                        <button class="btn btn-ghost btn-sm" onclick="state.ui.summarySortDir = state.ui.summarySortDir==='asc' ? 'desc' : 'asc'; renderAdmin()">${sd==='asc' ? '▲ Asc' : '▼ Desc'}</button>
                     </div>
                 </div>
                 <div class="table-container" style="margin-top: 20px;">
@@ -1405,7 +1434,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            ${sorted.map(r => `
+                            ${sorted.length ? sorted.map(r => `
                                 <tr>
                                     <td data-label="Student">${r.student.name}</td>
                                     <td data-label="Class">${r.student.class}</td>
@@ -1421,7 +1450,7 @@
                                         </div>
                                     </td>
                                 </tr>
-                            `).join('')}
+                            `).join('') : '<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-muted);">No students in this class.</td></tr>'}
                         </tbody>
                     </table>
                 </div>
