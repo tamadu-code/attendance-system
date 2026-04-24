@@ -827,7 +827,7 @@
 
     async function syncAllData() {
         try {
-            showToast('Connecting to Supabase...', 'primary');
+            // showToast('Connecting to Supabase...', 'primary');
             
             // 1. Fetch Students
             const { data: studentList } = await supabaseClient.from('students').select('*');
@@ -869,7 +869,7 @@
                 })
                 .subscribe();
 
-            showToast('Live Supabase Sync Active', 'success');
+            showToast('Live', 'success');
         } catch (e) {
             showToast('Supabase Sync Error', 'danger');
             console.error(e);
@@ -901,9 +901,9 @@
                 data.forEach(a => {
                     state.attendance[date][a.student_id] = { in: a.sign_in, out: a.sign_out, late: a.is_late };
                 });
-                showToast(`Loaded ${data.length} records for ${date}`, 'success');
+                // showToast(`Loaded ${data.length} records for ${date}`, 'success');
             } else {
-                showToast(`No records found for ${date}`, 'warning');
+                // showToast(`No records found for ${date}`, 'warning');
             }
             render();
         } catch (e) {
@@ -923,7 +923,7 @@
         }
 
         // Otherwise fetch it
-        showToast('Fetching records...', 'primary');
+        // showToast('Fetching records...', 'primary');
         await fetchAttendanceForDate(date);
         renderAdmin();
     };
@@ -932,7 +932,7 @@
     async function fetchAllAttendance() {
         if (allAttendanceFetched) return;
         try {
-            showToast('Loading all records for summary...', 'primary');
+            // showToast('Loading all records for summary...', 'primary');
             const { data } = await supabaseClient.from('attendance').select('*');
             if (data) {
                 // Clear and rebuild to ensure consistency
@@ -943,7 +943,7 @@
                 });
                 allAttendanceFetched = true;
                 render();
-                showToast('All records loaded', 'success');
+                // showToast('All records loaded', 'success');
             }
         } catch (e) {
             console.error("Error fetching all attendance:", e);
@@ -1197,7 +1197,7 @@
             renderAdmin();
             // Load all historical data in background for summary and historical logs
             fetchAllAttendance();
-            showToast('Admin Access Granted', 'success');
+            // showToast('Admin Access Granted', 'success');
         }
     }
 
