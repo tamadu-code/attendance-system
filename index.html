@@ -894,7 +894,7 @@
                 };
 
                 // 3. Upsert the merged record
-                const { error } = await supabaseClient.from('attendance').upsert(merged);
+                const { error } = await supabaseClient.from('attendance').upsert(merged, { onConflict: 'student_id,date' });
                 if (error) throw error;
 
                 // Success! Remove from pending
