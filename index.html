@@ -1195,6 +1195,8 @@
             render();
             // Force a re-render of admin specifically to ensure visibility
             renderAdmin();
+            // Load all historical data in background for summary and historical logs
+            fetchAllAttendance();
             showToast('Admin Access Granted', 'success');
         }
     }
@@ -1477,7 +1479,7 @@
                 <div class="header" style="display: flex; color: var(--text-main); margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
                     <h2 style="font-size: 1.2rem;">Daily Log: ${state.ui.viewDate}</h2>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-                        <input type="date" class="search-input" style="padding: 8px 16px; min-width: 150px;" value="${state.ui.viewDate}" onchange="changeViewDate(this.value)">
+                        <input type="date" class="search-input" style="padding: 8px 16px; min-width: 150px;" value="${state.ui.viewDate}" onchange="window.changeViewDate(this.value)" oninput="window.changeViewDate(this.value)">
                         <select class="search-input" style="padding: 8px 12px; min-width: 130px;" onchange="state.ui.dailyFilterClass=this.value; renderAdmin()">
                             <option value="all" ${fc==='all'?'selected':''}>All Classes</option>
                             ${allClasses.map(c => `<option value="${c}" ${fc===c?'selected':''}>${c}</option>`).join('')}
