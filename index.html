@@ -2171,7 +2171,7 @@
 
         try {
             showToast(`Signing out ${activeIds.length} students...`, 'primary');
-            const { error } = await supabaseClient.from('attendance').upsert(updates);
+            const { error } = await supabaseClient.from('attendance').upsert(updates, { onConflict: 'student_id,date' });
             if (error) throw error;
             
             // Update local state
