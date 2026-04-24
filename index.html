@@ -783,6 +783,7 @@
             state.students = data.students || [];
             state.attendance = data.attendance || {};
             state.config = data.config || state.config;
+            state.pendingSync = data.pendingSync || []; // Restore offline queue
             state.ui.kioskCode = '';
             state.ui.searchQuery = '';
         } else {
