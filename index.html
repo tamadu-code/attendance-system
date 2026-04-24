@@ -1361,7 +1361,7 @@
             
             if (now >= lockoutStart && now <= lockoutEnd) {
                 vibrate(200);
-                showToast(`Sign-out restricted until ${lockoutEnd.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} to prevent accidental sign-outs.`, 'warning');
+                showToast(`${student.name} is already signed in. Sign-out restricted until ${lockoutEnd.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}.`, 'warning');
                 state.ui.kioskCode = '';
                 updateCodeDisplay();
                 return;
