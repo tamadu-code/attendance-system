@@ -650,7 +650,7 @@
                     <span></span>
                 </div>
                 <div class="logo-area">
-                    <h1>Attendance Pro</h1>
+                    <h1>${state.config.schoolName}</h1>
                 </div>
             </div>
             <div class="mode-switch">
@@ -695,13 +695,14 @@
     <div id="sidebarOverlay" class="overlay"></div>
     <div id="sidebar" class="sidebar">
         <div class="sidebar-header">
-            <h2 style="font-size: 1.25rem; margin: 0;">Admin Menu</h2>
+            <h2 style="font-size: 1.25rem; margin: 0;" id="sidebarTitle">${state.config.schoolName} Admin</h2>
             <div class="sidebar-close" id="closeSidebarBtn">&times;</div>
         </div>
         <div class="sidebar-menu">
             <div id="menuStudentManagement" class="sidebar-menu-item"><span>👥</span> Student Management</div>
             <div id="menuDailyAttendance" class="sidebar-menu-item"><span>📆</span> Daily Attendance</div>
             <div id="menuSummary" class="sidebar-menu-item"><span>📊</span> Attendance Summary</div>
+            <div id="menuSettings" class="sidebar-menu-item"><span>⚙️</span> System Settings</div>
             <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 12px 0;">
             <div id="themeToggleBtn" class="sidebar-menu-item"><span>🌓</span> Switch Theme</div>
             <div onclick="backupData()" class="sidebar-menu-item"><span>📤</span> Backup (Export All)</div>
@@ -726,7 +727,7 @@
         pendingSync: [],
         config: {
             lateTime: '08:30',
-            schoolName: 'Attendance Pro',
+            schoolName: 'NKQM ATTENDANCE',
             theme: localStorage.getItem('theme') || 'dark',
             school_closing_time: '15:30',
             dismissal_group_size: 20,
@@ -1534,6 +1535,10 @@
         const absent = total - present;
 
         let html = `
+            <div style="margin-bottom: 30px; border-bottom: 1px solid rgba(255,255,255,0.05); padding-bottom: 15px;">
+                <h1 style="font-size: 1.5rem; margin: 0; font-weight: 800; letter-spacing: -0.5px; color: var(--text-main)">${state.config.schoolName} Admin</h1>
+                <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 5px;">${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            </div>
             <div class="stats-grid">
                 <div class="stat-card">
                     <span class="stat-label">Total Students</span>
@@ -1560,6 +1565,8 @@
             html += renderDailyAttendance();
         } else if (state.ui.adminSection === 'reports') {
             html += renderSummary();
+        } else if (state.ui.adminSection === 'settings') {
+            html += renderSettings();
         }
 
         container.innerHTML = html;
@@ -1847,24 +1854,6 @@
                     <h2 style="font-size: 1.2rem; margin:0;">Overall Summary</h2>
                     <button class="btn btn-ghost btn-sm" onclick="downloadCSV()">📥 Full Export</button>
                 </div>
-                <div class="action-bar" style="flex-wrap: wrap; gap: 10px;">
-                    <div style="flex: 1; min-width: 150px;">
-                        <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Late Cutoff Time</label>
-                        <input type="time" class="search-input" value="${state.config.lateTime}" onchange="state.config.lateTime = this.value; saveData(); showToast('Cutoff updated', 'success'); renderAdmin()">
-                    </div>
-                    <div style="flex: 1; min-width: 150px;">
-                        <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">School Closing Time</label>
-                        <input type="time" class="search-input" value="${state.config.school_closing_time}" onchange="state.config.school_closing_time = this.value; saveData(); showToast('Closing time updated', 'success'); renderAdmin()">
-                    </div>
-                    <div style="flex: 1; min-width: 150px;">
-                        <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Group Size</label>
-                        <input type="number" class="search-input" value="${state.config.dismissal_group_size}" onchange="state.config.dismissal_group_size = parseInt(this.value); saveData(); showToast('Group size updated', 'success'); renderAdmin()">
-                    </div>
-                    <div style="flex: 1; min-width: 150px;">
-                        <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Interval (Min)</label>
-                        <input type="number" class="search-input" value="${state.config.dismissal_interval_minutes}" onchange="state.config.dismissal_interval_minutes = parseInt(this.value); saveData(); showToast('Interval updated', 'success'); renderAdmin()">
-                    </div>
-                </div>
                 <div class="action-bar" style="flex-wrap: wrap; gap: 10px; margin-top: 10px;">
                     <div style="flex: 1; min-width: 150px;">
                         <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Month</label>
@@ -2055,6 +2044,56 @@
         vibrate(50);
     };
 
+    function renderSettings() {
+        return `
+            <div class="card">
+                <div class="header" style="margin-bottom: 20px;">
+                    <h2 style="font-size: 1.2rem; margin:0;">System Settings</h2>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 5px;">Configure your school details and attendance rules.</p>
+                </div>
+
+                <div class="settings-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;">
+                    <div class="stat-card" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 20px;">
+                        <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; color: var(--text-main)">App Display Name</label>
+                        <input type="text" class="search-input" style="width: 100%;" value="${state.config.schoolName}" onchange="state.config.schoolName = this.value; saveData(); showToast('App Name updated', 'success'); render()">
+                    </div>
+
+                    <div class="stat-card" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 20px;">
+                        <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; color: var(--text-main)">Late Cutoff Time</label>
+                        <input type="time" class="search-input" style="width: 100%;" value="${state.config.lateTime}" onchange="state.config.lateTime = this.value; saveData(); showToast('Cutoff updated', 'success'); renderAdmin()">
+                    </div>
+
+                    <div class="stat-card" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 20px;">
+                        <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; color: var(--text-main)">School Closing Time</label>
+                        <input type="time" class="search-input" style="width: 100%;" value="${state.config.school_closing_time}" onchange="state.config.school_closing_time = this.value; saveData(); showToast('Closing time updated', 'success'); renderAdmin()">
+                    </div>
+
+                    <div class="stat-card" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 20px;">
+                        <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; color: var(--text-main)">Dismissal Group Size</label>
+                        <input type="number" class="search-input" style="width: 100%;" value="${state.config.dismissal_group_size}" onchange="state.config.dismissal_group_size = parseInt(this.value); saveData(); showToast('Group size updated', 'success'); renderAdmin()">
+                    </div>
+
+                    <div class="stat-card" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 20px;">
+                        <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 10px; color: var(--text-main)">Dismissal Interval (Minutes)</label>
+                        <input type="number" class="search-input" style="width: 100%;" value="${state.config.dismissal_interval_minutes}" onchange="state.config.dismissal_interval_minutes = parseInt(this.value); saveData(); showToast('Interval updated', 'success'); renderAdmin()">
+                    </div>
+                </div>
+
+                <div class="header" style="margin-top: 40px; margin-bottom: 20px;">
+                    <h2 style="font-size: 1.2rem; margin:0;">Data Management</h2>
+                </div>
+
+                <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                    <button class="btn btn-primary" onclick="backupData()" style="padding: 12px 24px;">📤 Download Full System Backup</button>
+                    <label class="btn btn-ghost" style="padding: 12px 24px; cursor: pointer;">
+                        📥 Restore System from Backup
+                        <input type="file" accept=".json" hidden onchange="restoreData(this)">
+                    </label>
+                </div>
+            </div>
+        `;
+    }
+
     window.closeModal = () => {
         document.getElementById('studentModal').style.display = 'none';
     };
@@ -2218,6 +2257,7 @@
         document.getElementById('menuStudentManagement').onclick = () => { closeSidebar(); state.ui.adminSection = 'students'; render(); updateNavActive(); };
         document.getElementById('menuDailyAttendance').onclick = () => { closeSidebar(); state.ui.adminSection = 'attendance'; render(); updateNavActive(); };
         document.getElementById('menuSummary').onclick = () => { closeSidebar(); state.ui.adminSection = 'reports'; render(); updateNavActive(); };
+        document.getElementById('menuSettings').onclick = () => { closeSidebar(); state.ui.adminSection = 'settings'; render(); updateNavActive(); };
         document.getElementById('menuExitAdmin').onclick = () => { 
             closeSidebar();
             state.ui.currentMode = 'kiosk'; 
@@ -2316,6 +2356,7 @@
             if (state.ui.adminSection === 'students') document.getElementById('menuStudentManagement')?.classList.add('active');
             if (state.ui.adminSection === 'attendance') document.getElementById('menuDailyAttendance')?.classList.add('active');
             if (state.ui.adminSection === 'reports') document.getElementById('menuSummary')?.classList.add('active');
+            if (state.ui.adminSection === 'settings') document.getElementById('menuSettings')?.classList.add('active');
         }
     }
 
