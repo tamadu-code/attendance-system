@@ -886,14 +886,52 @@
     }
 
     async function refreshAttendance() {
-        const today = new Date().toISOString().split('T')[0];
-        const { data } = await supabaseClient.from('attendance').select('*').eq('date', today);
-        if (data) {
-            state.attendance[today] = {};
-            data.forEach(a => {
-                state.attendance[today][a.student_id] = { in: a.sign_in, out: a.sign_out, late: a.is_late };
-            });
-            render();
+        await fetchAttendanceForDate(new Date().toISOString().split('T')[0]);
+    }
+
+    async function fetchAttendanceForDate(date) {
+        try {
+            const { data } = await supabaseClient.from('attendance').select('*').eq('date', date);
+            if (data) {
+                state.attendance[date] = {};
+                data.forEach(a => {
+                    state.attendance[date][a.student_id] = { in: a.sign_in, out: a.sign_out, late: a.is_late };
+                });
+                render();
+            }
+        } catch (e) {
+            console.error("Error fetching attendance for date:", date, e);
+        }
+    }
+
+    window.changeViewDate = async (date) => {
+        state.ui.viewDate = date;
+        if (!state.attendance[date]) {
+            showToast('Loading records...', 'primary');
+            await fetchAttendanceForDate(date);
+        }
+        renderAdmin();
+    };
+
+    let allAttendanceFetched = false;
+    async function fetchAllAttendance() {
+        if (allAttendanceFetched) return;
+        try {
+            showToast('Loading all records for summary...', 'primary');
+            const { data } = await supabaseClient.from('attendance').select('*');
+            if (data) {
+                // Clear and rebuild to ensure consistency
+                state.attendance = {};
+                data.forEach(a => {
+                    if (!state.attendance[a.date]) state.attendance[a.date] = {};
+                    state.attendance[a.date][a.student_id] = { in: a.sign_in, out: a.sign_out, late: a.is_late };
+                });
+                allAttendanceFetched = true;
+                render();
+                showToast('All records loaded', 'success');
+            }
+        } catch (e) {
+            console.error("Error fetching all attendance:", e);
         }
     }
 
@@ -1424,7 +1462,7 @@
                 <div class="header" style="display: flex; color: var(--text-main); margin-bottom: 20px; flex-wrap: wrap; gap: 10px;">
                     <h2 style="font-size: 1.2rem;">Daily Log: ${state.ui.viewDate}</h2>
                     <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-                        <input type="date" class="search-input" style="padding: 8px 16px; min-width: 150px;" value="${state.ui.viewDate}" onchange="state.ui.viewDate = this.value; renderAdmin()">
+                        <input type="date" class="search-input" style="padding: 8px 16px; min-width: 150px;" value="${state.ui.viewDate}" onchange="changeViewDate(this.value)">
                         <select class="search-input" style="padding: 8px 12px; min-width: 130px;" onchange="state.ui.dailyFilterClass=this.value; renderAdmin()">
                             <option value="all" ${fc==='all'?'selected':''}>All Classes</option>
                             ${allClasses.map(c => `<option value="${c}" ${fc===c?'selected':''}>${c}</option>`).join('')}
@@ -1477,6 +1515,9 @@
     }
 
     function renderSummary() {
+        if (!allAttendanceFetched) {
+            fetchAllAttendance();
+        }
         const allDates = Object.keys(state.attendance);
         const sb = state.ui.summarySortBy;
         const sd = state.ui.summarySortDir;
