@@ -1045,8 +1045,6 @@
                     refreshAttendance();
                 })
                 .subscribe();
-
-            showToast('Live', 'success');
         } catch (e) {
             showToast('Supabase Sync Error', 'danger');
             console.error(e);
