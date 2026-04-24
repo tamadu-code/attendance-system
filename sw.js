@@ -1,7 +1,8 @@
-const CACHE_NAME = 'attendance-v2';
+const CACHE_NAME = 'attendance-v3';
 const ASSETS = [
   './index.html',
   './manifest.json',
+  './icon-512.png',
   'https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap',
   'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2',
   'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js',
