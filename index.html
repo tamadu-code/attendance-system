@@ -891,25 +891,40 @@
 
     async function fetchAttendanceForDate(date) {
         try {
-            const { data } = await supabaseClient.from('attendance').select('*').eq('date', date);
-            if (data) {
-                state.attendance[date] = {};
+            console.log("Fetching attendance for date:", date);
+            const { data, error } = await supabaseClient.from('attendance').select('*').eq('date', date);
+            
+            if (error) throw error;
+
+            state.attendance[date] = {};
+            if (data && data.length > 0) {
                 data.forEach(a => {
                     state.attendance[date][a.student_id] = { in: a.sign_in, out: a.sign_out, late: a.is_late };
                 });
-                render();
+                showToast(`Loaded ${data.length} records for ${date}`, 'success');
+            } else {
+                showToast(`No records found for ${date}`, 'warning');
             }
+            render();
         } catch (e) {
             console.error("Error fetching attendance for date:", date, e);
+            showToast('Failed to fetch records: ' + (e.message || e), 'danger');
         }
     }
 
     window.changeViewDate = async (date) => {
+        if (!date) return;
         state.ui.viewDate = date;
-        if (!state.attendance[date]) {
-            showToast('Loading records...', 'primary');
-            await fetchAttendanceForDate(date);
+        
+        // If we already have the data, just render
+        if (state.attendance[date] && Object.keys(state.attendance[date]).length > 0) {
+            renderAdmin();
+            return;
         }
+
+        // Otherwise fetch it
+        showToast('Fetching records...', 'primary');
+        await fetchAttendanceForDate(date);
         renderAdmin();
     };
 
