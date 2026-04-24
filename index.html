@@ -1628,8 +1628,8 @@
                 responsive: true,
                 maintainAspectRatio: false,
                 scales: {
-                    x: { stacked: true },
-                    y: { stacked: true, beginAtZero: true, max: totalStudents }
+                    x: { stacked: false },
+                    y: { stacked: false, beginAtZero: true, max: totalStudents }
                 }
             }
         });
@@ -2060,15 +2060,40 @@
     };
 
     // --- Backup & Restore Logic ---
-    window.backupData = () => {
-        const data = JSON.stringify(state);
-        const blob = new Blob([data], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `attendance_system_backup_${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        showToast('System Backup Downloaded', 'success');
+    window.backupData = async () => {
+        try {
+            showToast('Preparing full database backup...', 'primary');
+            
+            // Fetch the ENTIRE attendance history from Supabase to ensure a complete backup
+            const { data, error } = await supabaseClient.from('attendance').select('*');
+            if (error) throw error;
+            
+            const fullAttendance = {};
+            if (data) {
+                data.forEach(a => {
+                    if (!fullAttendance[a.date]) fullAttendance[a.date] = {};
+                    fullAttendance[a.date][a.student_id] = { in: a.sign_in, out: a.sign_out, late: a.is_late };
+                });
+            }
+            
+            // Combine with current students and settings
+            const backupState = {
+                ...state,
+                attendance: fullAttendance
+            };
+
+            const dataStr = JSON.stringify(backupState);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `attendance_system_full_backup_${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            showToast('Full System Backup Downloaded', 'success');
+        } catch (e) {
+            console.error("Backup failed:", e);
+            showToast('Backup failed: ' + e.message, 'danger');
+        }
     };
 
     window.restoreData = (input) => {
