@@ -19,6 +19,13 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
     <script>
+        // Prevent theme flash
+        if (localStorage.getItem('theme') === 'light') {
+            document.documentElement.classList.add('light-theme');
+        }
+    </script>
+
+    <script>
         // --- Supabase Configuration ---
         const SUPABASE_URL = "https://wuzliodvddzmhehffqfx.supabase.co";
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1emxpb2R2ZGR6bWhlaGZmcWZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTkxNTEsImV4cCI6MjA5MjQzNTE1MX0.0ASY-NuhdHPhyg9pB2XYiXOLJTnrocXxjkC6gpqO_vQ";
@@ -51,7 +58,7 @@
             --text-on-panel: var(--text-main);
         }
 
-        body.light-theme {
+        .light-theme {
             --bg-body: #94a3b8;
             --bg-panel: #94a3b8;
             --text-on-panel: #0f172a;
@@ -385,9 +392,9 @@
             color: var(--text-main);
         }
 
-        body.light-theme select.search-input option {
-            background: #ffffff;
-            color: #0f172a;
+        .light-theme select.search-input option {
+            background-color: white !important;
+            color: black !important;
         }
 
         /* --- Responsive Table --- */
@@ -556,7 +563,7 @@
             text-shadow: 0 0 10px rgba(59, 130, 246, 0.3);
         }
 
-        body.light-theme code {
+        .light-theme code {
             background: rgba(59, 130, 246, 0.1);
         }
 
@@ -808,7 +815,7 @@
 
     function toggleTheme() {
         state.config.theme = state.config.theme === 'dark' ? 'light' : 'dark';
-        document.body.classList.toggle('light-theme', state.config.theme === 'light');
+        document.documentElement.classList.toggle('light-theme', state.config.theme === 'light');
         localStorage.setItem('theme', state.config.theme);
         saveData();
     }
@@ -823,7 +830,7 @@
         // Connect to Cloud (real-time sync)
         await syncAllData();
         
-        document.body.classList.toggle('light-theme', state.config.theme === 'light');
+        document.documentElement.classList.toggle('light-theme', state.config.theme === 'light');
     }
 
     function loadData() {
