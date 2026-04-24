@@ -746,7 +746,9 @@
             dailyFilterClass: 'all',
             summarySortBy: 'name',
             summarySortDir: 'asc',
-            summaryFilterClass: 'all'
+            summaryFilterClass: 'all',
+            summaryMonth: new Date().toISOString().slice(0, 7)
+
         }
     };
 
@@ -755,6 +757,53 @@
             navigator.vibrate(ms);
         }
     }
+
+    let audioCtx = null;
+    function playBeep(type = 'success') {
+        try {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            
+            if (type === 'success') {
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); 
+                oscillator.frequency.exponentialRampToValueAtTime(1760, audioCtx.currentTime + 0.1); 
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                oscillator.start(audioCtx.currentTime);
+                oscillator.stop(audioCtx.currentTime + 0.1);
+                
+                setTimeout(() => {
+                    if(audioCtx.state !== 'closed') {
+                        const osc2 = audioCtx.createOscillator();
+                        const gain2 = audioCtx.createGain();
+                        osc2.connect(gain2);
+                        gain2.connect(audioCtx.destination);
+                        osc2.type = 'sine';
+                        osc2.frequency.setValueAtTime(1760, audioCtx.currentTime);
+                        gain2.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                        gain2.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+                        osc2.start(audioCtx.currentTime);
+                        osc2.stop(audioCtx.currentTime + 0.1);
+                    }
+                }, 150);
+            } else if (type === 'error') {
+                oscillator.type = 'sawtooth';
+                oscillator.frequency.setValueAtTime(200, audioCtx.currentTime);
+                gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+                gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 0.4);
+                oscillator.start(audioCtx.currentTime);
+                oscillator.stop(audioCtx.currentTime + 0.4);
+            }
+        } catch (e) { console.error("Audio beep failed", e); }
+    }
+
 
     function toggleTheme() {
         state.config.theme = state.config.theme === 'dark' ? 'light' : 'dark';
@@ -866,18 +915,20 @@
             }
         }
         
-        for (const item of uniqueItems) {
-            try {
-                // 1. Fetch current cloud state to avoid overwriting newer info (Smart Merge)
-                const { data: cloudRecord } = await supabaseClient
-                    .from('attendance')
-                    .select('*')
-                    .eq('student_id', item.studentId)
-                    .eq('date', item.date)
-                    .maybeSingle();
+        try {
+            // 1. Fetch cloud records for all relevant dates in ONE request
+            const dates = [...new Set(uniqueItems.map(item => item.date))];
+            const { data: cloudRecords, error: fetchError } = await supabaseClient
+                .from('attendance')
+                .select('*')
+                .in('date', dates);
+                
+            if (fetchError) throw fetchError;
 
-                // 2. Perform the merge: (Smart Merge)
-                const merged = {
+            // 2. Perform the Smart Merge locally in memory
+            const mergedRecords = uniqueItems.map(item => {
+                const cloudRecord = cloudRecords ? cloudRecords.find(r => r.student_id === item.studentId && r.date === item.date) : null;
+                return {
                     student_id: item.studentId,
                     date: item.date,
                     // Keep the EARLIEST Sign-In time
@@ -892,20 +943,25 @@
 
                     is_late: (cloudRecord && cloudRecord.is_late) || item.record.late || false
                 };
+            });
 
-                // 3. Upsert the merged record
-                const { error } = await supabaseClient.from('attendance').upsert(merged, { onConflict: 'student_id,date' });
-                if (error) throw error;
+            // 3. Upsert ALL merged records in ONE request
+            if (mergedRecords.length > 0) {
+                const { error: upsertError } = await supabaseClient
+                    .from('attendance')
+                    .upsert(mergedRecords, { onConflict: 'student_id,date' });
+                
+                if (upsertError) throw upsertError;
 
-                // Success! Remove from pending
-                state.pendingSync = state.pendingSync.filter(p => !(p.studentId === item.studentId && p.date === item.date));
+                // Success! Remove the synced items from the pending queue
+                state.pendingSync = state.pendingSync.filter(p => !uniqueItems.find(u => u.studentId === p.studentId && u.date === p.date));
                 saveData();
-            } catch (e) {
-                console.warn("Background sync failed for individual record:", e);
-                showToast("Sync Error: " + (e.message || JSON.stringify(e)), "danger");
-                break; // Stop loop and retry later
             }
+        } catch (e) {
+            console.warn("Background bulk sync failed:", e);
+            showToast("Sync Error: " + (e.message || JSON.stringify(e)), "danger");
         }
+
         updateSyncIndicator();
     }
 
@@ -1037,25 +1093,29 @@
         renderAdmin();
     };
 
-    let allAttendanceFetched = false;
-    async function fetchAllAttendance() {
-        if (allAttendanceFetched) return;
+    let lastFetchedMonth = '';
+    async function fetchAllAttendance(month = state.ui.summaryMonth) {
+        if (lastFetchedMonth === month) return;
         try {
-            // showToast('Loading all records for summary...', 'primary');
-            const { data } = await supabaseClient.from('attendance').select('*');
+            const [yyyy, mm] = month.split('-');
+            const firstDay = new Date(yyyy, mm - 1, 1).toISOString().split('T')[0];
+            const lastDay = new Date(yyyy, mm, 0).toISOString().split('T')[0];
+
+            const { data } = await supabaseClient.from('attendance')
+                .select('*')
+                .gte('date', firstDay)
+                .lte('date', lastDay);
+
             if (data) {
-                // Clear and rebuild to ensure consistency
-                state.attendance = {};
                 data.forEach(a => {
                     if (!state.attendance[a.date]) state.attendance[a.date] = {};
                     state.attendance[a.date][a.student_id] = { in: a.sign_in, out: a.sign_out, late: a.is_late };
                 });
-                allAttendanceFetched = true;
+                lastFetchedMonth = month;
                 render();
-                // showToast('All records loaded', 'success');
             }
         } catch (e) {
-            console.error("Error fetching all attendance:", e);
+            console.error("Error fetching attendance for month:", e);
         }
     }
 
@@ -1331,6 +1391,7 @@
         const student = state.students.find(s => s.code === code);
         if (!student) {
             vibrate(300); // Long pulse on error
+            playBeep('error');
             showToast('Student code not found', 'danger');
             state.ui.kioskCode = '';
             updateCodeDisplay();
@@ -1354,6 +1415,7 @@
             record.in = timeStr;
             record.late = timeStr > state.config.lateTime;
             vibrate([100, 50, 100]); // Happy pattern on success
+            playBeep('success');
             showToast(`${student.name} signed IN at ${timeStr}${record.late ? ' (LATE)' : ''}`, 'success');
         } else if (!record.out) {
             // Failsafe: Prevent accidental sign-out within 1 hour of the late cutoff
@@ -1364,6 +1426,7 @@
             
             if (now <= lockoutEnd) {
                 vibrate(200);
+                playBeep('error');
                 showToast(`${student.name} is already signed in. Sign-out restricted until ${lockoutEnd.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}.`, 'warning');
                 state.ui.kioskCode = '';
                 updateCodeDisplay();
@@ -1373,10 +1436,12 @@
             // Sign Out
             record.out = timeStr;
             vibrate([100, 50, 100]); // Happy pattern on success
+            playBeep('success');
             showToast(`${student.name} signed OUT at ${timeStr}`, 'success');
         } else {
             // Already Signed Out
             vibrate(200);
+            playBeep('error');
             showToast(`${student.name} already signed out for today`, 'warning');
         }
 
@@ -1491,6 +1556,71 @@
         }
 
         container.innerHTML = html;
+        
+        if (state.ui.adminSection === 'reports' && lastFetchedMonth === state.ui.summaryMonth) {
+            renderChart();
+        }
+    }
+
+    let attendanceChartInstance = null;
+    function renderChart() {
+        const ctx = document.getElementById('attendanceChart');
+        if (!ctx) return;
+
+        const allDates = Object.keys(state.attendance).filter(d => d.startsWith(state.ui.summaryMonth)).sort();
+        const fc = state.ui.summaryFilterClass;
+        
+        const labels = allDates.map(d => d.slice(-2)); // Just the day numbers
+        const presentData = [];
+        const absentData = [];
+
+        const studentsInClass = state.students.filter(s => fc === 'all' || s.class === fc);
+        const totalStudents = studentsInClass.length;
+
+        if (totalStudents === 0 || allDates.length === 0) return;
+
+        allDates.forEach(date => {
+            let present = 0;
+            studentsInClass.forEach(s => {
+                const rec = state.attendance[date] && state.attendance[date][s.id];
+                if (rec && rec.in) present++;
+            });
+            presentData.push(present);
+            absentData.push(totalStudents - present);
+        });
+
+        if (attendanceChartInstance) {
+            attendanceChartInstance.destroy();
+        }
+
+        attendanceChartInstance = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [
+                    {
+                        label: 'Present',
+                        data: presentData,
+                        backgroundColor: '#10b981',
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Absent',
+                        data: absentData,
+                        backgroundColor: '#ef4444',
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { stacked: true },
+                    y: { stacked: true, beginAtZero: true, max: totalStudents }
+                }
+            }
+        });
     }
 
     function renderStudentManagement() {
@@ -1655,10 +1785,12 @@
     }
 
     function renderSummary() {
-        if (!allAttendanceFetched) {
-            fetchAllAttendance();
+        if (lastFetchedMonth !== state.ui.summaryMonth) {
+            fetchAllAttendance(state.ui.summaryMonth);
+            return `<div style="padding: 40px; text-align: center; color: var(--text-muted)">Loading data for ${state.ui.summaryMonth}...</div>`;
         }
-        const allDates = Object.keys(state.attendance);
+        
+        const allDates = Object.keys(state.attendance).filter(d => d.startsWith(state.ui.summaryMonth)).sort();
         const sb = state.ui.summarySortBy;
         const sd = state.ui.summarySortDir;
         const fc = state.ui.summaryFilterClass;
@@ -1723,6 +1855,10 @@
                 </div>
                 <div class="action-bar" style="flex-wrap: wrap; gap: 10px; margin-top: 10px;">
                     <div style="flex: 1; min-width: 150px;">
+                        <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Month</label>
+                        <input type="month" class="search-input" value="${state.ui.summaryMonth}" onchange="state.ui.summaryMonth=this.value; renderAdmin()">
+                    </div>
+                    <div style="flex: 1; min-width: 150px;">
                         <label style="display: block; font-size: 0.8rem; margin-bottom: 4px; color: var(--text-muted)">Filter by Class</label>
                         <select class="search-input" onchange="state.ui.summaryFilterClass=this.value; renderAdmin()">
                             <option value="all" ${fc==='all'?'selected':''}>All Classes</option>
@@ -1744,6 +1880,12 @@
                         <button class="btn btn-ghost btn-sm" onclick="state.ui.summarySortDir = state.ui.summarySortDir==='asc' ? 'desc' : 'asc'; renderAdmin()">${sd==='asc' ? '▲ Asc' : '▼ Desc'}</button>
                     </div>
                 </div>
+
+                <!-- Chart Container -->
+                <div style="width: 100%; height: 250px; margin-top: 20px; position: relative;">
+                    <canvas id="attendanceChart"></canvas>
+                </div>
+
                 <div class="table-container" style="margin-top: 20px;">
                     <table>
                         <thead>
@@ -2050,6 +2192,8 @@
 
         // QR Scanner Implementation
         let html5QrCode = null;
+        let lastScannedCode = '';
+        let lastScannedTime = 0;
 
         document.getElementById('qrScanBtn').onclick = () => {
             vibrate(100);
@@ -2062,13 +2206,19 @@
                 { facingMode: "environment" }, 
                 config, 
                 (decodedText) => {
-                    // Success
+                    const now = Date.now();
+                    // 3-second cooldown for the same barcode to prevent rapid multiple scans
+                    if (decodedText === lastScannedCode && (now - lastScannedTime) < 3000) {
+                        return;
+                    }
+                    lastScannedCode = decodedText;
+                    lastScannedTime = now;
+
                     vibrate(200);
                     
                     // Logic to toggle In/Out
                     state.ui.kioskCode = decodedText;
                     updateCodeDisplay();
-                    stopScanner();
                     processAttendance();
                 }
             ).catch(err => {
