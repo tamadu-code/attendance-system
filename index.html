@@ -659,7 +659,7 @@
     <div class="app">
         <div class="header">
             <div style="display: flex; align-items: center; gap: 15px;">
-                <div id="syncIndicator" class="sync-indicator online" title="Cloud Sync Active"></div>
+                <div id="syncIndicator" class="sync-indicator online"></div>
                 <div class="hamburger" id="hamburgerBtn">
                     <span></span>
                     <span></span>
@@ -988,19 +988,15 @@
         
         if (forceStatus) {
             indicator.classList.add(forceStatus);
-            indicator.title = forceStatus === 'pending' ? 'Syncing with cloud...' : 'Sync Status';
             return;
         }
 
         if (!navigator.onLine) {
             indicator.classList.add('offline');
-            indicator.title = 'Offline - Records will save locally';
         } else if (state.pendingSync && state.pendingSync.length > 0) {
             indicator.classList.add('pending');
-            indicator.title = `${state.pendingSync.length} records waiting to sync`;
         } else {
             indicator.classList.add('online');
-            indicator.title = 'All records synced to cloud';
         }
     }
 
