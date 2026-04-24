@@ -183,6 +183,15 @@
             justify-content: center;
             gap: 16px;
             margin-bottom: 20px;
+            padding: 12px;
+            border-radius: 16px;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .code-display.admin-mode {
+            background-color: #fff3cd !important;
+            border: 2px solid #f0ad4e !important;
         }
 
         .code-dot {
@@ -625,7 +634,6 @@
             </div>
             <div class="mode-switch">
                 <button id="kioskModeBtn" class="mode-btn active"><span>🔑</span> Kiosk</button>
-                <button id="adminModeBtn" class="mode-btn admin-btn"><span>🛡️</span> Admin</button>
             </div>
         </div>
 
@@ -689,6 +697,7 @@
     // --- Constants & State ---
     const STORAGE_KEY = 'attendance_app_v2';
     const ADMIN_PASS = 'admin999';
+    const ADMIN_CODE_6 = '000000';
     
     let state = {
         students: [],
@@ -705,6 +714,9 @@
             currentMode: 'kiosk', 
             adminSection: 'students', 
             kioskCode: '',
+            adminModeActive: false,
+            adminModeTimeout: null,
+            longPressTimer: null,
             searchQuery: '',
             filterClass: 'all',
             sortBy: 'name',
@@ -1042,10 +1054,19 @@
             state.ui.kioskCode = '';
         } else if (key === '⌫') {
             state.ui.kioskCode = state.ui.kioskCode.slice(0, -1);
-        } else if (state.ui.kioskCode.length < 4) {
-            state.ui.kioskCode += key;
-            if (state.ui.kioskCode.length === 4) {
-                setTimeout(() => processAttendance(), 300); // Small delay for visual feedback
+        } else {
+            const limit = state.ui.adminModeActive ? 6 : 4;
+            if (state.ui.kioskCode.length < limit) {
+                state.ui.kioskCode += key;
+                if (state.ui.kioskCode.length === limit) {
+                    setTimeout(() => {
+                        if (state.ui.adminModeActive) {
+                            processAdminCode();
+                        } else {
+                            processAttendance();
+                        }
+                    }, 300);
+                }
             }
         }
         updateCodeDisplay();
@@ -1062,10 +1083,78 @@
     };
 
     function updateCodeDisplay() {
-        const dots = document.querySelectorAll('.code-dot');
+        const display = document.getElementById('codeDisplay');
+        const dotsCount = state.ui.adminModeActive ? 6 : 4;
+        
+        // Update dots count if necessary
+        const currentDots = display.querySelectorAll('.code-dot');
+        if (currentDots.length !== dotsCount) {
+            display.innerHTML = '';
+            for (let i = 0; i < dotsCount; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'code-dot';
+                display.appendChild(dot);
+            }
+        }
+
+        const dots = display.querySelectorAll('.code-dot');
         dots.forEach((dot, i) => {
             dot.classList.toggle('filled', i < state.ui.kioskCode.length);
         });
+    }
+
+    function enterAdminMode() {
+        if (state.ui.adminModeActive) return;
+        
+        state.ui.adminModeActive = true;
+        state.ui.kioskCode = '';
+        
+        const display = document.getElementById('codeDisplay');
+        display.classList.add('admin-mode');
+        
+        updateCodeDisplay();
+        vibrate([100, 50, 100]); // Haptic confirmation
+        
+        // Start 30s timeout
+        if (state.ui.adminModeTimeout) clearTimeout(state.ui.adminModeTimeout);
+        state.ui.adminModeTimeout = setTimeout(() => {
+            exitAdminMode();
+        }, 30000);
+    }
+
+    function exitAdminMode(success = false) {
+        state.ui.adminModeActive = false;
+        state.ui.kioskCode = '';
+        
+        if (state.ui.adminModeTimeout) {
+            clearTimeout(state.ui.adminModeTimeout);
+            state.ui.adminModeTimeout = null;
+        }
+        
+        const display = document.getElementById('codeDisplay');
+        if (display) display.classList.remove('admin-mode');
+        
+        updateCodeDisplay();
+        
+        if (success) {
+            state.ui.currentMode = 'admin';
+            updateNavActive();
+            render();
+            // Force a re-render of admin specifically to ensure visibility
+            renderAdmin();
+            showToast('Admin Access Granted', 'success');
+        }
+    }
+
+    function processAdminCode() {
+        if (state.ui.kioskCode === ADMIN_CODE_6) {
+            exitAdminMode(true);
+        } else {
+            vibrate(300);
+            state.ui.kioskCode = '';
+            updateCodeDisplay();
+            // We don't exit, just clear and wait for next attempt or timeout
+        }
     }
 
     function processAttendance() {
@@ -1139,7 +1228,43 @@
             const btn = document.createElement('button');
             btn.className = 'keypad-btn' + (isNaN(key) ? ' special' : '');
             btn.textContent = key;
-            btn.onclick = () => handleKeypad(key);
+            
+            if (key === '0') {
+                const startLongPress = (e) => {
+                    if (state.ui.adminModeActive) return;
+                    state.ui.longPressTimer = setTimeout(() => {
+                        enterAdminMode();
+                    }, 3000);
+                };
+                
+                const cancelLongPress = () => {
+                    if (state.ui.longPressTimer) {
+                        clearTimeout(state.ui.longPressTimer);
+                        state.ui.longPressTimer = null;
+                    }
+                };
+
+                btn.addEventListener('mousedown', startLongPress);
+                btn.addEventListener('touchstart', (e) => {
+                    e.preventDefault(); // Prevent double triggers
+                    handleKeypad('0');
+                    startLongPress();
+                }, { passive: false });
+                
+                btn.addEventListener('mouseup', cancelLongPress);
+                btn.addEventListener('touchend', cancelLongPress);
+                btn.addEventListener('mouseleave', cancelLongPress);
+                
+                // Normal click for '0' (for mouse)
+                btn.addEventListener('click', () => {
+                    if (state.ui.longPressTimer === null) {
+                        handleKeypad('0');
+                    }
+                });
+            } else {
+                btn.onclick = () => handleKeypad(key);
+            }
+            
             keypad.appendChild(btn);
         });
     }
@@ -1723,18 +1848,6 @@
             render();
         };
 
-        document.getElementById('adminModeBtn').onclick = () => {
-            const pass = prompt('Enter Admin Password:');
-            if (pass === ADMIN_PASS) {
-                state.ui.currentMode = 'admin';
-                updateNavActive();
-                render();
-                showToast('Admin Access Granted', 'success');
-            } else {
-                showToast('Invalid Password', 'danger');
-            }
-        };
-
         // Hamburger Menu Toggle
         document.getElementById('hamburgerBtn').onclick = openSidebar;
         document.getElementById('closeSidebarBtn').onclick = closeSidebar;
@@ -1813,18 +1926,11 @@
     function updateNavActive() {
         // Show/Hide Hamburger based on mode
         const hamburger = document.getElementById('hamburgerBtn');
-        hamburger.style.display = state.ui.currentMode === 'admin' ? 'flex' : 'none';
+        if (hamburger) hamburger.style.display = state.ui.currentMode === 'admin' ? 'flex' : 'none';
 
-        const kioskBtn = document.getElementById('kioskModeBtn');
-        const adminBtn = document.getElementById('adminModeBtn');
-
-        if (state.ui.currentMode === 'kiosk') {
-            kioskBtn.classList.add('active');
-            adminBtn.classList.remove('active');
-        } else {
-            kioskBtn.classList.remove('active');
-            adminBtn.classList.add('active');
-        }
+        // Show/Hide Kiosk Switch based on mode (Only visible in Admin mode to allow switching back)
+        const modeSwitch = document.querySelector('.mode-switch');
+        if (modeSwitch) modeSwitch.style.display = state.ui.currentMode === 'admin' ? 'flex' : 'none';
 
         // Remove active class from all sidebar items
         document.querySelectorAll('.sidebar-menu-item').forEach(i => i.classList.remove('active'));
