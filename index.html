@@ -1818,6 +1818,7 @@
                         <button class="btn btn-ghost btn-sm" onclick="state.ui.dailySortDir = state.ui.dailySortDir==='asc' ? 'desc' : 'asc'; renderAdmin()" title="Toggle direction">${sd==='asc' ? '▲ Asc' : '▼ Desc'}</button>
                         <button class="btn btn-ghost btn-sm" onclick="downloadDailyCsv()">📥 CSV</button>
                         <button class="btn btn-ghost btn-sm" onclick="window.print()">🖨️ PDF</button>
+                        <button class="btn btn-danger btn-sm" style="background: var(--danger, #ef4444); border: none; color: white; margin-left: auto;" onclick="signOutAllToday()">🔴 Sign Out All</button>
                     </div>
                 </div>
                 <div class="table-container">
@@ -2145,6 +2146,47 @@
             </div>
         `;
     }
+
+    window.signOutAllToday = async () => {
+        const today = state.ui.viewDate || new Date().toISOString().split('T')[0];
+        const logs = state.attendance[today] || {};
+        
+        const activeIds = Object.keys(logs).filter(id => logs[id].in && !logs[id].out);
+        
+        if (activeIds.length === 0) {
+            showToast("No students currently signed in.", "info");
+            return;
+        }
+
+        if (!confirm(`Are you sure you want to sign out ALL ${activeIds.length} students currently present for ${today}?`)) return;
+        
+        const timeStr = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
+        
+        const updates = activeIds.map(id => ({
+            student_id: id,
+            date: today,
+            sign_in: logs[id].in,
+            sign_out: timeStr,
+            is_late: logs[id].late || false
+        }));
+
+        try {
+            showToast(`Signing out ${activeIds.length} students...`, 'primary');
+            const { error } = await supabaseClient.from('attendance').upsert(updates);
+            if (error) throw error;
+            
+            // Update local state
+            activeIds.forEach(id => {
+                state.attendance[today][id].out = timeStr;
+            });
+            
+            showToast(`Successfully signed out ${activeIds.length} students`, 'success');
+            renderAdmin();
+        } catch (e) {
+            console.error(e);
+            showToast("Bulk sign-out failed: " + e.message, "danger");
+        }
+    };
 
     window.closeModal = () => {
         document.getElementById('studentModal').style.display = 'none';
