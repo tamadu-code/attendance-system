@@ -899,8 +899,7 @@
             // 1. Sync Settings (Theme/Cutoff)
             const { error } = await supabaseClient.from('settings').upsert({ 
                 key: 'config', 
-                value: state.config,
-                updated_at: new Date().toISOString()
+                value: state.config
             });
 
             if (error) throw error;
