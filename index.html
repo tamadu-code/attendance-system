@@ -684,8 +684,9 @@
                 <!-- JS Populated -->
             </div>
 
-            <div class="kiosk-actions">
-                <button id="qrScanBtn" class="btn btn-ghost" style="border-radius: 50%; width: 56px; height: 56px; padding: 0; justify-content: center; font-size: 1.5rem;">📷</button>
+            <div class="kiosk-actions" style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+                <button id="qrScanBtn" class="btn btn-ghost" style="border-radius: 50%; width: 56px; height: 56px; padding: 0; justify-content: center; font-size: 1.5rem;" title="Scan QR Code">📷</button>
+                <button onclick="toggleTheme()" class="btn btn-ghost" style="border-radius: 50%; width: 44px; height: 44px; padding: 0; justify-content: center; font-size: 1.1rem; opacity: 0.6;" title="Switch Theme">🌓</button>
             </div>
             
             <p style="margin-top: 24px; font-size: 0.85rem; opacity: 0.7;">
@@ -818,6 +819,7 @@
         document.documentElement.classList.toggle('light-theme', state.config.theme === 'light');
         localStorage.setItem('theme', state.config.theme);
         saveData();
+        showToast(`Switched to ${state.config.theme} mode`, 'success');
     }
 
     // --- Core Functions ---
@@ -2284,7 +2286,7 @@
             render(); 
             showToast('Exited Admin Panel', 'primary'); 
         };
-        document.getElementById('themeToggleBtn').onclick = () => { toggleTheme(); closeSidebar(); showToast(`Switched to ${state.config.theme} mode`, 'success'); };
+        document.getElementById('themeToggleBtn').onclick = () => { toggleTheme(); closeSidebar(); };
 
         // QR Scanner Implementation
         let html5QrCode = null;
