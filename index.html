@@ -902,6 +902,7 @@
                 saveData();
             } catch (e) {
                 console.warn("Background sync failed for individual record:", e);
+                showToast("Sync Error: " + (e.message || JSON.stringify(e)), "danger");
                 break; // Stop loop and retry later
             }
         }
