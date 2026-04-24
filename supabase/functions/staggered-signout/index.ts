@@ -95,7 +95,9 @@ serve(async (req) => {
     
     // For the record display, we use the local time string (WAT)
     const localNow = new Date(nowUtc.getTime() + (1 * 60 * 60 * 1000))
-    const timeStr = localNow.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' })
+    const timeStr = `${String(localNow.getUTCHours()).padStart(2, '0')}:${String(localNow.getUTCMinutes()).padStart(2, '0')}`
+
+    console.log(`Processing Auto Sign-out for ${today}. School Local Time: ${timeStr}. UTC: ${nowUtc.toISOString()}`)
 
     for (const record of attendance) {
       const groupIndex = groupMap.get(record.student_id) ?? 0
@@ -106,13 +108,20 @@ serve(async (req) => {
           .from('attendance')
           .update({ sign_out: timeStr })
           .match({ student_id: record.student_id, date: today })
-        if (!updateError) signedOutCount++
+        
+        if (!updateError) {
+          signedOutCount++
+          console.log(`Auto-signed out student ${record.student_id} at ${timeStr}`)
+        }
       }
     }
 
+    console.log(`Auto sign-out complete. Signed out ${signedOutCount} students.`)
+
     return new Response(JSON.stringify({
       message: `Success: System checked ${attendance.length} records and signed out ${signedOutCount} students.`,
-      timestamp: nowUtc.toISOString()
+      timestamp: nowUtc.toISOString(),
+      local_time: timeStr
     }), { status: 200, headers: { "Content-Type": "application/json" } })
 
   } catch (err) {
