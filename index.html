@@ -51,13 +51,13 @@
         }
 
         body.light-theme {
-            --bg-body: #f1f5f9;
-            --bg-panel: #ffffff;
+            --bg-body: #cbd5e1;
+            --bg-panel: #f1f5f9;
             --text-on-panel: #0f172a;
-            --bg-dark: #cbd5e1;
+            --bg-dark: #94a3b8;
             --bg-card: #ffffff;
             --text-main: #0f172a;
-            --text-muted: #475569;
+            --text-muted: #334155;
             --border-glass: rgba(0, 0, 0, 0.1);
         }
 
@@ -242,7 +242,7 @@
             aspect-ratio: 1;
             background: rgba(255,255,255,0.03);
             border: 1px solid var(--border-glass);
-            color: white;
+            color: var(--text-main);
             font-size: 1.75rem;
             font-weight: 600;
             border-radius: 50%;
@@ -325,20 +325,20 @@
 
         .btn-success {
             background: var(--success);
-            color: white;
+            color: var(--text-main);
             box-shadow: 0 10px 20px -5px rgba(16, 185, 129, 0.3);
         }
 
         .btn-warning {
             background: var(--warning);
-            color: white;
+            color: var(--text-main);
             box-shadow: 0 10px 20px -5px rgba(245, 158, 11, 0.3);
         }
 
         .btn:active { transform: scale(0.96); opacity: 0.9; }
 
         /* --- Admin Section --- */
-        .admin-section { display: none; color: white; }
+        .admin-section { display: none; color: var(--text-main); }
         .admin-section.active-section { display: block; }
 
         .stats-grid {
@@ -355,8 +355,8 @@
             border: 1px solid var(--border-glass);
         }
 
-        .stat-label { font-size: 0.7rem; color: var(--text-dim); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; display: block; }
-        .stat-value { font-size: 1.5rem; font-weight: 800; color: white; }
+        .stat-label { font-size: 0.7rem; color: var(--text-muted); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; display: block; }
+        .stat-value { font-size: 1.5rem; font-weight: 800; color: var(--text-main); }
 
         .action-bar {
             display: flex;
@@ -2204,7 +2204,7 @@
                 <div class="no-print" style="background: #f1f5f9; padding: 10px; border-radius: 12px; margin-bottom: 20px; text-align: center; border: 1px solid #cbd5e1;">
                     <h2 style="margin: 0 0 5px 0; color: #0f172a; font-size: 1.2rem;">Compact Print Sheet</h2>
                     <p style="margin: 0 0 10px 0; font-size: 12px;">5 Barcodes per row. Optimized for 30+ students per page.</p>
-                    <button onclick="window.print()" style="padding: 8px 20px; font-size: 14px; cursor: pointer; background: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: 600;">🖨️ Print Now</button>
+                    <button onclick="window.print()" style="padding: 8px 20px; font-size: 14px; cursor: pointer; background: var(--text-main); color: white; border: none; border-radius: 8px; font-weight: 600;">🖨️ Print Now</button>
                 </div>
                 <div class="header-info">
                     <h2 style="margin:0; font-size: 1.1rem;">Student ID Barcodes (Sorted by Class)</h2>
