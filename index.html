@@ -544,9 +544,15 @@
         .sidebar-close { font-size: 2rem; cursor: pointer; text-align: right; margin-bottom: 20px; }
 
         @media (max-width: 430px) {
-            .live-clock { font-size: 3.5rem; }
-            .keypad-btn { font-size: 1.5rem; }
-            .app { padding: 15px; }
+            .live-clock { font-size: 3rem; letter-spacing: -1px; }
+            .keypad-btn { padding: 12px; font-size: 1.25rem; }
+            .numeric-keypad { gap: 12px; max-width: 280px; }
+            .card { padding: 20px 15px; }
+            .code-display { gap: 10px; margin-bottom: 15px; padding: 8px; }
+            .code-dot { width: 12px; height: 12px; }
+            .live-date { margin-bottom: 12px; font-size: 0.75rem; letter-spacing: 1px; }
+            .app { padding: 10px; }
+            .logo-area h1 { font-size: 1.2rem; }
         }
 
         /* --- Admin UI Elements --- */
@@ -663,8 +669,9 @@
                     <h1 id="logoTitle">NKQM ATTENDANCE</h1>
                 </div>
             </div>
-            <div class="mode-switch">
+            <div class="mode-switch" style="display: flex; gap: 4px; align-items: center;">
                 <button id="kioskModeBtn" class="mode-btn active"><span>🔑</span> Kiosk</button>
+                <button onclick="toggleTheme()" class="mode-btn" style="padding: 8px 12px; border: none; background: transparent;" title="Switch Theme">🌓</button>
             </div>
         </div>
 
@@ -684,9 +691,8 @@
                 <!-- JS Populated -->
             </div>
 
-            <div class="kiosk-actions" style="display: flex; align-items: center; justify-content: center; gap: 15px;">
+            <div class="kiosk-actions">
                 <button id="qrScanBtn" class="btn btn-ghost" style="border-radius: 50%; width: 56px; height: 56px; padding: 0; justify-content: center; font-size: 1.5rem;" title="Scan QR Code">📷</button>
-                <button onclick="toggleTheme()" class="btn btn-ghost" style="border-radius: 50%; width: 44px; height: 44px; padding: 0; justify-content: center; font-size: 1.1rem; opacity: 0.6;" title="Switch Theme">🌓</button>
             </div>
             
             <p style="margin-top: 24px; font-size: 0.85rem; opacity: 0.7;">
@@ -819,7 +825,6 @@
         document.documentElement.classList.toggle('light-theme', state.config.theme === 'light');
         localStorage.setItem('theme', state.config.theme);
         saveData();
-        showToast(`Switched to ${state.config.theme} mode`, 'success');
     }
 
     // --- Core Functions ---
