@@ -106,6 +106,24 @@
             -webkit-text-fill-color: transparent;
         }
 
+        /* --- Sync Indicator --- */
+        .sync-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #64748b;
+            transition: all 0.3s ease;
+        }
+        .sync-indicator.online { background: #10b981; box-shadow: 0 0 10px rgba(16, 185, 129, 0.4); }
+        .sync-indicator.offline { background: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
+        .sync-indicator.pending { background: #f59e0b; animation: syncPulse 1.5s infinite; }
+
+        @keyframes syncPulse {
+            0% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.5; transform: scale(1.2); }
+            100% { opacity: 1; transform: scale(1); }
+        }
+
         .mode-switch {
             display: flex;
             background: rgba(255,255,255,0.05);
@@ -623,6 +641,7 @@
     <div class="app">
         <div class="header">
             <div style="display: flex; align-items: center; gap: 15px;">
+                <div id="syncIndicator" class="sync-indicator online" title="Cloud Sync Active"></div>
                 <div class="hamburger" id="hamburgerBtn">
                     <span></span>
                     <span></span>
@@ -702,6 +721,7 @@
     let state = {
         students: [],
         attendance: {},
+        pendingSync: [],
         config: {
             lateTime: '08:30',
             schoolName: 'Attendance Pro',
@@ -807,21 +827,77 @@
 
     async function saveStudentRecord(studentId, record) {
         const today = new Date().toISOString().split('T')[0];
-        try {
-            await supabaseClient.from('attendance').upsert({
-                student_id: studentId,
-                date: today,
-                sign_in: record.in,
-                sign_out: record.out,
-                is_late: record.late
-            }, { onConflict: 'student_id,date' });
-            
-            // Local update
-            if (!state.attendance[today]) state.attendance[today] = {};
-            state.attendance[today][studentId] = record;
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        } catch (e) {
-            console.error("Supabase record save failed:", e);
+        
+        // 1. Local-First Update
+        if (!state.attendance[today]) state.attendance[today] = {};
+        state.attendance[today][studentId] = record;
+        
+        // 2. Queue for Sync
+        if (!state.pendingSync) state.pendingSync = [];
+        // Avoid duplicate pending items for same student/date
+        state.pendingSync = state.pendingSync.filter(p => !(p.studentId === studentId && p.date === today));
+        state.pendingSync.push({ studentId, record, date: today });
+        
+        saveData();
+        updateSyncIndicator();
+
+        // 3. Trigger Async Push
+        tryPushPending();
+    }
+
+    async function tryPushPending() {
+        if (!navigator.onLine || !state.pendingSync || state.pendingSync.length === 0) {
+            updateSyncIndicator();
+            return;
+        }
+
+        updateSyncIndicator('pending');
+        const queue = [...state.pendingSync];
+        
+        for (const item of queue) {
+            try {
+                const { error } = await supabaseClient.from('attendance').upsert({
+                    student_id: item.studentId,
+                    date: item.date,
+                    sign_in: item.record.in,
+                    sign_out: item.record.out,
+                    is_late: item.record.late
+                }, { onConflict: 'student_id,date' });
+
+                if (error) throw error;
+
+                // Success! Remove from pending
+                state.pendingSync = state.pendingSync.filter(p => !(p.studentId === item.studentId && p.date === item.date));
+                saveData();
+            } catch (e) {
+                console.warn("Background sync failed for individual record:", e);
+                break; // Stop loop and retry later
+            }
+        }
+        updateSyncIndicator();
+    }
+
+    function updateSyncIndicator(forceStatus = null) {
+        const indicator = document.getElementById('syncIndicator');
+        if (!indicator) return;
+
+        indicator.classList.remove('online', 'offline', 'pending');
+        
+        if (forceStatus) {
+            indicator.classList.add(forceStatus);
+            indicator.title = forceStatus === 'pending' ? 'Syncing with cloud...' : 'Sync Status';
+            return;
+        }
+
+        if (!navigator.onLine) {
+            indicator.classList.add('offline');
+            indicator.title = 'Offline - Records will save locally';
+        } else if (state.pendingSync && state.pendingSync.length > 0) {
+            indicator.classList.add('pending');
+            indicator.title = `${state.pendingSync.length} records waiting to sync`;
+        } else {
+            indicator.classList.add('online');
+            indicator.title = 'All records synced to cloud';
         }
     }
 
@@ -1962,10 +2038,19 @@
                 }).catch(() => {
                     document.getElementById('scannerModal').style.display = 'none';
                 });
-            } else {
-                document.getElementById('scannerModal').style.display = 'none';
             }
         };
+
+        window.addEventListener('online', () => {
+            updateSyncIndicator();
+            tryPushPending();
+        });
+        window.addEventListener('offline', () => {
+            updateSyncIndicator();
+        });
+
+        // Initialize sync indicator
+        updateSyncIndicator();
     }
 
     function checkAdmin() {
