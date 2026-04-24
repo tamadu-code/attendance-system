@@ -875,13 +875,21 @@
                     .eq('date', item.date)
                     .maybeSingle();
 
-                // 2. Perform the merge: Prefer local values, but fall back to cloud if local is null
+                // 2. Perform the merge: (Smart Merge)
                 const merged = {
                     student_id: item.studentId,
                     date: item.date,
-                    sign_in: item.record.in || (cloudRecord ? cloudRecord.sign_in : null),
-                    sign_out: item.record.out || (cloudRecord ? cloudRecord.sign_out : null),
-                    is_late: item.record.late || (cloudRecord ? cloudRecord.is_late : false)
+                    // Keep the EARLIEST Sign-In time
+                    sign_in: (cloudRecord && cloudRecord.sign_in && item.record.in)
+                        ? (item.record.in < cloudRecord.sign_in ? item.record.in : cloudRecord.sign_in)
+                        : (item.record.in || (cloudRecord ? cloudRecord.sign_in : null)),
+                    
+                    // Keep the LATEST Sign-Out time
+                    sign_out: (cloudRecord && cloudRecord.sign_out && item.record.out)
+                        ? (item.record.out > cloudRecord.sign_out ? item.record.out : cloudRecord.sign_out)
+                        : (item.record.out || (cloudRecord ? cloudRecord.sign_out : null)),
+
+                    is_late: (cloudRecord && cloudRecord.is_late) || item.record.late || false
                 };
 
                 // 3. Upsert the merged record
