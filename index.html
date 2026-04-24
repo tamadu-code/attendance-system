@@ -650,7 +650,7 @@
                     <span></span>
                 </div>
                 <div class="logo-area">
-                    <h1>${state.config.schoolName}</h1>
+                    <h1 id="logoTitle">NKQM ATTENDANCE</h1>
                 </div>
             </div>
             <div class="mode-switch">
@@ -695,7 +695,7 @@
     <div id="sidebarOverlay" class="overlay"></div>
     <div id="sidebar" class="sidebar">
         <div class="sidebar-header">
-            <h2 style="font-size: 1.25rem; margin: 0;" id="sidebarTitle">${state.config.schoolName} Admin</h2>
+            <h2 style="font-size: 1.25rem; margin: 0;" id="sidebarTitle">NKQM ATTENDANCE Admin</h2>
             <div class="sidebar-close" id="closeSidebarBtn">&times;</div>
         </div>
         <div class="sidebar-menu">
@@ -1460,7 +1460,19 @@
     }
 
     // --- Admin Logic ---
+    function updateBranding() {
+        const name = state.config.schoolName || 'NKQM ATTENDANCE';
+        const logoTitle = document.getElementById('logoTitle');
+        if (logoTitle) logoTitle.textContent = name;
+        
+        const sidebarTitle = document.getElementById('sidebarTitle');
+        if (sidebarTitle) sidebarTitle.textContent = `${name} Admin`;
+        
+        document.title = `${name} | Attendance System`;
+    }
+
     function render() {
+        updateBranding();
         if (state.ui.currentMode === 'admin') {
             renderAdmin();
         } else {
