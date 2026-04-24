@@ -1353,6 +1353,20 @@
             vibrate([100, 50, 100]); // Happy pattern on success
             showToast(`${student.name} signed IN at ${timeStr}${record.late ? ' (LATE)' : ''}`, 'success');
         } else if (!record.out) {
+            // Failsafe: Prevent accidental sign-out within 1 hour of the late cutoff
+            const [cutoffH, cutoffM] = state.config.lateTime.split(':').map(Number);
+            const lockoutStart = new Date();
+            lockoutStart.setHours(cutoffH, cutoffM, 0, 0);
+            const lockoutEnd = new Date(lockoutStart.getTime() + 60 * 60 * 1000); // 1 hour lockout
+            
+            if (now >= lockoutStart && now <= lockoutEnd) {
+                vibrate(200);
+                showToast(`Sign-out restricted until ${lockoutEnd.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})} to prevent accidental sign-outs.`, 'warning');
+                state.ui.kioskCode = '';
+                updateCodeDisplay();
+                return;
+            }
+
             // Sign Out
             record.out = timeStr;
             vibrate([100, 50, 100]); // Happy pattern on success
