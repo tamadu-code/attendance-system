@@ -84,15 +84,22 @@ serve(async (req) => {
     if (sgError) throw sgError
 
     const groupMap = new Map(studentGroups.map(sg => [sg.student_id, sg.group_index]))
+    
+    // Nigeria is UTC+1. Constructing the baseTime in UTC then adjusting by -1 hour 
+    // to match the local closing time string (e.g., 15:30 WAT = 14:30 UTC)
     const [hours, minutes] = schoolClosingTime.split(':').map(Number)
-    const baseTime = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate(), hours, minutes, 0))
+    const baseTimeUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate(), hours, minutes, 0))
+    const schoolBaseTime = new Date(baseTimeUtc.getTime() - (1 * 60 * 60 * 1000)) // Subtract 1 hour for WAT (UTC+1)
 
     let signedOutCount = 0
-    const timeStr = nowUtc.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' })
+    
+    // For the record display, we use the local time string (WAT)
+    const localNow = new Date(nowUtc.getTime() + (1 * 60 * 60 * 1000))
+    const timeStr = localNow.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' })
 
     for (const record of attendance) {
       const groupIndex = groupMap.get(record.student_id) ?? 0
-      const scheduledTime = new Date(baseTime.getTime() + groupIndex * intervalMinutes * 60000)
+      const scheduledTime = new Date(schoolBaseTime.getTime() + groupIndex * intervalMinutes * 60000)
 
       if (nowUtc >= scheduledTime) {
         const { error: updateError } = await supabase

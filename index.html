@@ -897,12 +897,17 @@
         
         try {
             // 1. Sync Settings (Theme/Cutoff)
-            await supabaseClient.from('settings').upsert({ key: 'config', value: state.config });
+            const { error } = await supabaseClient.from('settings').upsert({ 
+                key: 'config', 
+                value: state.config,
+                updated_at: new Date().toISOString()
+            });
 
-            // Note: Students are synced individually during Add/Delete/Import
-            // to keep the connection fast.
+            if (error) throw error;
+            console.log("Settings synced to cloud successfully");
         } catch (e) {
             console.warn("Supabase background sync failed:", e);
+            showToast("Cloud Save Failed", "warning");
         }
     }
 
@@ -1054,9 +1059,9 @@
                 });
             }
 
-            // 3. Fetch Settings
+            // 3. Fetch Settings (Only if not currently editing them in Admin)
             const { data: settingsData } = await supabaseClient.from('settings').select('value').eq('key', 'config').single();
-            if (settingsData) {
+            if (settingsData && state.ui.adminSection !== 'settings') {
                 state.config = { ...state.config, ...settingsData.value };
             }
 
