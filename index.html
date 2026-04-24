@@ -767,12 +767,12 @@
     async function init() {
         loadData();
         startClock();
+        setupEventListeners();
         render();
         
         // Connect to Cloud (real-time sync)
         await syncAllData();
-
-        setupEventListeners();
+        
         document.body.classList.toggle('light-theme', state.config.theme === 'light');
     }
 
@@ -933,7 +933,8 @@
 
     async function syncAllData() {
         try {
-            // showToast('Connecting to Supabase...', 'primary');
+            // Push any offline records FIRST to preserve earliest timestamps
+            await tryPushPending();
             
             // 1. Fetch Students
             const { data: studentList } = await supabaseClient.from('students').select('*');
