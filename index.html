@@ -852,18 +852,40 @@
         }
 
         updateSyncIndicator('pending');
-        const queue = [...state.pendingSync];
         
-        for (const item of queue) {
+        // Create a unique list of items to sync (newest first)
+        const uniqueItems = [];
+        const seen = new Set();
+        for (let i = state.pendingSync.length - 1; i >= 0; i--) {
+            const item = state.pendingSync[i];
+            const key = `${item.studentId}_${item.date}`;
+            if (!seen.has(key)) {
+                uniqueItems.push(item);
+                seen.add(key);
+            }
+        }
+        
+        for (const item of uniqueItems) {
             try {
-                const { error } = await supabaseClient.from('attendance').upsert({
+                // 1. Fetch current cloud state to avoid overwriting newer info (Smart Merge)
+                const { data: cloudRecord } = await supabaseClient
+                    .from('attendance')
+                    .select('*')
+                    .eq('student_id', item.studentId)
+                    .eq('date', item.date)
+                    .maybeSingle();
+
+                // 2. Perform the merge: Prefer local values, but fall back to cloud if local is null
+                const merged = {
                     student_id: item.studentId,
                     date: item.date,
-                    sign_in: item.record.in,
-                    sign_out: item.record.out,
-                    is_late: item.record.late
-                }, { onConflict: 'student_id,date' });
+                    sign_in: item.record.in || (cloudRecord ? cloudRecord.sign_in : null),
+                    sign_out: item.record.out || (cloudRecord ? cloudRecord.sign_out : null),
+                    is_late: item.record.late || (cloudRecord ? cloudRecord.is_late : false)
+                };
 
+                // 3. Upsert the merged record
+                const { error } = await supabaseClient.from('attendance').upsert(merged);
                 if (error) throw error;
 
                 // Success! Remove from pending
