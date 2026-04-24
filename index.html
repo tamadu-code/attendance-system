@@ -1100,8 +1100,13 @@
         if (lastFetchedMonth === month) return;
         try {
             const [yyyy, mm] = month.split('-');
-            const firstDay = new Date(yyyy, mm - 1, 1).toISOString().split('T')[0];
-            const lastDay = new Date(yyyy, mm, 0).toISOString().split('T')[0];
+            const year = parseInt(yyyy);
+            const mon = parseInt(mm);
+            
+            // Generate timezone-safe YYYY-MM-DD strings
+            const firstDay = `${yyyy}-${mm}-01`;
+            const lastDateNum = new Date(year, mon, 0).getDate();
+            const lastDay = `${yyyy}-${mm}-${lastDateNum.toString().padStart(2, '0')}`;
 
             const { data } = await supabaseClient.from('attendance')
                 .select('*')
@@ -2185,12 +2190,12 @@
 
 
         // Sidebar Menu Items
-        document.getElementById('menuStudentManagement').onclick = () => { state.ui.adminSection = 'students'; render(); closeSidebar(); updateNavActive(); };
-        document.getElementById('menuDailyAttendance').onclick = () => { state.ui.adminSection = 'attendance'; render(); closeSidebar(); updateNavActive(); };
-        document.getElementById('menuSummary').onclick = () => { state.ui.adminSection = 'reports'; render(); closeSidebar(); updateNavActive(); };
+        document.getElementById('menuStudentManagement').onclick = () => { closeSidebar(); state.ui.adminSection = 'students'; render(); updateNavActive(); };
+        document.getElementById('menuDailyAttendance').onclick = () => { closeSidebar(); state.ui.adminSection = 'attendance'; render(); updateNavActive(); };
+        document.getElementById('menuSummary').onclick = () => { closeSidebar(); state.ui.adminSection = 'reports'; render(); updateNavActive(); };
         document.getElementById('menuExitAdmin').onclick = () => { 
-            state.ui.currentMode = 'kiosk'; 
             closeSidebar();
+            state.ui.currentMode = 'kiosk'; 
             updateNavActive(); 
             render(); 
             showToast('Exited Admin Panel', 'primary'); 
