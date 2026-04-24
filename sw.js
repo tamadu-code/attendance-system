@@ -1,4 +1,4 @@
-const CACHE_NAME = 'attendance-v1';
+const CACHE_NAME = 'attendance-v2';
 const ASSETS = [
   './index.html',
   './manifest.json',
@@ -9,13 +9,39 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', (e) => {
+  self.skipWaiting();
   e.waitUntil(
     caches.open(CACHE_NAME).then(cache => cache.addAll(ASSETS))
   );
 });
 
+self.addEventListener('activate', (e) => {
+  e.waitUntil(
+    caches.keys().then(keys => {
+      return Promise.all(
+        keys.filter(key => key !== CACHE_NAME).map(key => caches.delete(key))
+      );
+    })
+  );
+  self.clients.claim();
+});
+
 self.addEventListener('fetch', (e) => {
   e.respondWith(
-    caches.match(e.request).then(res => res || fetch(e.request))
+    fetch(e.request)
+      .then(response => {
+        // Update cache with the latest version
+        if (response && response.status === 200 && response.type === 'basic') {
+          const responseClone = response.clone();
+          caches.open(CACHE_NAME).then(cache => {
+            cache.put(e.request, responseClone);
+          });
+        }
+        return response;
+      })
+      .catch(() => {
+        // Fall back to cache if offline
+        return caches.match(e.request);
+      })
   );
 });
