@@ -1547,27 +1547,29 @@
                 <h1 style="font-size: 1.5rem; margin: 0; font-weight: 800; letter-spacing: -0.5px; color: var(--text-main)">${state.config.schoolName} Admin</h1>
                 <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 5px;">${new Date().toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
             </div>
-            <div class="stats-grid">
-                <div class="stat-card">
-                    <span class="stat-label">Total Students</span>
-                    <span class="stat-value">${total}</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-label">Present</span>
-                    <span class="stat-value" style="color: var(--success)">${present}</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-label">Absent</span>
-                    <span class="stat-value" style="color: var(--danger)">${absent}</span>
-                </div>
-                <div class="stat-card">
-                    <span class="stat-label">Late</span>
-                    <span class="stat-value" style="color: var(--accent)">${late}</span>
-                </div>
-            </div>
         `;
 
         if (state.ui.adminSection === 'students') {
+            html += `
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <span class="stat-label">Total Students</span>
+                        <span class="stat-value">${total}</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Present</span>
+                        <span class="stat-value" style="color: var(--success)">${present}</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Absent</span>
+                        <span class="stat-value" style="color: var(--danger)">${absent}</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">Late</span>
+                        <span class="stat-value" style="color: var(--accent)">${late}</span>
+                    </div>
+                </div>
+            `;
             html += renderStudentManagement();
         } else if (state.ui.adminSection === 'attendance') {
             html += renderDailyAttendance();
