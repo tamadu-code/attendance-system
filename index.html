@@ -1359,7 +1359,7 @@
             lockoutStart.setHours(cutoffH, cutoffM, 0, 0);
             const lockoutEnd = new Date(lockoutStart.getTime() + 60 * 60 * 1000); // 1 hour lockout
             
-            if (now >= lockoutStart && now <= lockoutEnd) {
+            if (now <= lockoutEnd) {
                 vibrate(200);
                 showToast(`${student.name} is already signed in. Sign-out restricted until ${lockoutEnd.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}.`, 'warning');
                 state.ui.kioskCode = '';
