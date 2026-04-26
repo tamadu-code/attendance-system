@@ -796,11 +796,7 @@
         }
     };
 
-    function vibrate(ms = 50) {
-        if ('vibrate' in navigator) {
-            navigator.vibrate(ms);
-        }
-    }
+
 
     let audioCtx = null;
     function playBeep(type = 'success') {
@@ -1276,7 +1272,7 @@
         URL.revokeObjectURL(url);
     }
 
-    function vibrate(pattern) {
+    function vibrate(pattern = 50) {
         if (navigator.vibrate) navigator.vibrate(pattern);
     }
 
@@ -1468,7 +1464,7 @@
             return;
         }
 
-        const today = new Date().toISOString().split('T')[0];
+
         const now = new Date();
         const timeStr = now.toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
 
