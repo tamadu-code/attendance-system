@@ -651,6 +651,79 @@
             th, td { padding: 4px 8px; border: 1px solid #eee; text-align: left; }
             .badge { border: none; background: transparent !important; color: black !important; padding: 0; font-weight: bold; }
             .logo-area h1 { -webkit-text-fill-color: black; font-size: 1.5rem; margin-bottom: 10px; }
+            margin-bottom: 10px;
+        }
+        
+        .term-closed-banner {
+            background: linear-gradient(135deg, #ef4444 0%, #991b1b 100%);
+            color: white;
+            padding: 15px;
+            border-radius: 16px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 10px 20px rgba(239, 68, 68, 0.2);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+
+        .toggle-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 10px 0;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 26px;
+        }
+
+        .switch input { opacity: 0; width: 0; height: 0; }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px; width: 18px;
+            left: 4px; bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider { background-color: var(--primary); }
+        input:checked + .slider:before { transform: translateX(24px); }
+
+        /* --- Print Styles --- */
+        @media print {
+            body { background: white; color: black; padding: 0; }
+            .app { padding: 0; max-width: 100%; }
+            .header, .bottom-nav, .mode-switch, .kiosk-panel, .btn, .action-bar, .nav-item, .no-print { display: none !important; }
+            .card { box-shadow: none; border: none; padding: 0; margin: 0; }
+            .admin-section { display: block !important; }
+            .table-container { overflow: visible; border: none; }
+            table { font-size: 9pt; width: 100%; border-collapse: collapse; }
+            th, td { padding: 4px 8px; border: 1px solid #eee; text-align: left; }
+            .badge { border: none; background: transparent !important; color: black !important; padding: 0; font-weight: bold; }
+            .logo-area h1 { -webkit-text-fill-color: black; font-size: 1.5rem; margin-bottom: 10px; }
             small { color: #666 !important; }
         }
     </style>
@@ -771,7 +844,8 @@
             dismissal_group_size: 20,
             dismissal_interval_minutes: 1,
             holidays: [],
-            recordOnWeekends: false
+            recordOnWeekends: false,
+            isTermClosed: false
         },
         ui: {
             theme: localStorage.getItem('theme') || 'dark',
@@ -1425,6 +1499,14 @@
     }
 
     function processAttendance() {
+        if (state.config.isTermClosed) {
+            vibrate(200);
+            playBeep('error');
+            showToast('School is currently closed for the term. Sign-in disabled.', 'danger');
+            state.ui.kioskCode = '';
+            updateCodeDisplay();
+            return;
+        }
         const today = new Date().toISOString().split('T')[0];
         const dayOfWeek = new Date().getDay(); // 0 = Sun, 6 = Sat
         
@@ -1539,8 +1621,23 @@
     }
 
     function renderKiosk() {
-        document.getElementById('kioskView').style.display = 'block';
+        const kioskView = document.getElementById('kioskView');
+        kioskView.style.display = 'block';
         document.getElementById('adminView').style.display = 'none';
+
+        // Check for Term Closed State
+        const isClosed = state.config.isTermClosed;
+        
+        // Remove existing banner if any
+        const oldBanner = kioskView.querySelector('.term-closed-banner');
+        if (oldBanner) oldBanner.remove();
+
+        if (isClosed) {
+            const banner = document.createElement('div');
+            banner.className = 'term-closed-banner';
+            banner.innerHTML = '🚫 School Closed for Term';
+            kioskView.insertBefore(banner, kioskView.firstChild);
+        }
         
         // Populate keypad
         const keypad = document.getElementById('numericKeypad');
@@ -1588,6 +1685,17 @@
             
             keypad.appendChild(btn);
         });
+
+        // Hide normal actions if term is closed
+        const kioskActions = document.querySelector('.kiosk-actions');
+        const kioskCutoff = kioskView.querySelector('p'); // cutoffDisplay paragraph
+        if (isClosed) {
+            if (kioskActions) kioskActions.style.display = 'none';
+            if (kioskCutoff) kioskCutoff.style.display = 'none';
+        } else {
+            if (kioskActions) kioskActions.style.display = 'flex';
+            if (kioskCutoff) kioskCutoff.style.display = 'block';
+        }
     }
 
     function renderAdmin() {
@@ -2159,10 +2267,31 @@
 
                 <div class="settings-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;">
                     <div class="stat-card" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 20px;">
-                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                            <input type="checkbox" ${state.config.recordOnWeekends ? 'checked' : ''} onchange="state.config.recordOnWeekends = this.checked; saveData(); showToast('Weekend setting updated', 'success'); renderAdmin()">
-                            <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main)">Record attendance on Weekends</span>
-                        </label>
+                        <div class="toggle-container">
+                            <div>
+                                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main)">Term Status</span>
+                                <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">
+                                    ${state.config.isTermClosed ? '<span style="color: #ef4444">Closed for Term</span>' : '<span style="color: #10b981">Active Term</span>'}
+                                </p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" ${state.config.isTermClosed ? 'checked' : ''} onchange="state.config.isTermClosed = this.checked; saveData(); showToast(this.checked ? 'School closed for term' : 'School opened for new term', 'info'); renderAdmin()">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="stat-card" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 20px;">
+                        <div class="toggle-container">
+                            <div>
+                                <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main)">Weekend Attendance</span>
+                                <p style="font-size: 0.7rem; color: var(--text-muted); margin-top: 2px;">Record on Sat/Sun</p>
+                            </div>
+                            <label class="switch">
+                                <input type="checkbox" ${state.config.recordOnWeekends ? 'checked' : ''} onchange="state.config.recordOnWeekends = this.checked; saveData(); showToast('Weekend setting updated', 'success'); renderAdmin()">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
                     </div>
 
                     <div class="stat-card" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 20px; grid-column: 1 / -1;">
