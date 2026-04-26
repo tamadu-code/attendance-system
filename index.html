@@ -769,7 +769,9 @@
             schoolName: 'NKQM ATTENDANCE',
             school_closing_time: '15:30',
             dismissal_group_size: 20,
-            dismissal_interval_minutes: 1
+            dismissal_interval_minutes: 1,
+            holidays: [],
+            recordOnWeekends: false
         },
         ui: {
             theme: localStorage.getItem('theme') || 'dark',
@@ -873,7 +875,7 @@
             const data = JSON.parse(saved);
             state.students = data.students || [];
             state.attendance = data.attendance || {};
-            state.config = data.config || state.config;
+            state.config = { ...state.config, ...(data.config || {}) };
             state.pendingSync = data.pendingSync || []; // Restore offline queue
             state.ui.kioskCode = '';
             state.ui.searchQuery = '';
@@ -1427,6 +1429,29 @@
     }
 
     function processAttendance() {
+        const today = new Date().toISOString().split('T')[0];
+        const dayOfWeek = new Date().getDay(); // 0 = Sun, 6 = Sat
+        
+        // 1. Check for Holidays
+        if (state.config.holidays && state.config.holidays.includes(today)) {
+            vibrate(200);
+            playBeep('error');
+            showToast('Attendance not recorded: Today is a scheduled holiday.', 'warning');
+            state.ui.kioskCode = '';
+            updateCodeDisplay();
+            return;
+        }
+
+        // 2. Check for Weekends
+        if ((dayOfWeek === 0 || dayOfWeek === 6) && !state.config.recordOnWeekends) {
+            vibrate(200);
+            playBeep('error');
+            showToast('Attendance not recorded on weekends.', 'warning');
+            state.ui.kioskCode = '';
+            updateCodeDisplay();
+            return;
+        }
+
         const code = state.ui.kioskCode;
         if (code.length < 4) {
             showToast('Please enter your 4-digit code', 'warning');
@@ -2132,6 +2157,40 @@
                 </div>
 
                 <div class="header" style="margin-top: 40px; margin-bottom: 20px;">
+                    <h2 style="font-size: 1.2rem; margin:0;">School Session Rules</h2>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 5px;">Define when attendance should not be recorded.</p>
+                </div>
+
+                <div class="settings-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px;">
+                    <div class="stat-card" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 20px;">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" ${state.config.recordOnWeekends ? 'checked' : ''} onchange="state.config.recordOnWeekends = this.checked; saveData(); showToast('Weekend setting updated', 'success'); renderAdmin()">
+                            <span style="font-size: 0.85rem; font-weight: 600; color: var(--text-main)">Record attendance on Weekends</span>
+                        </label>
+                    </div>
+
+                    <div class="stat-card" style="text-align: left; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.05); padding: 20px; grid-column: 1 / -1;">
+                        <label style="display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 15px; color: var(--text-main)">School Holidays / Non-Session Dates</label>
+                        <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                            <input type="date" id="newHolidayDate" class="search-input" style="flex: 1;">
+                            <button class="btn btn-primary" style="padding: 10px 20px; text-transform: none; letter-spacing: 0;" onclick="window.addHoliday()">Add Holiday</button>
+                        </div>
+                        
+                        <div style="display: flex; flex-wrap: wrap; gap: 10px;">
+                            ${(state.config.holidays || []).length > 0 ? 
+                                state.config.holidays.sort().map(h => `
+                                    <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid var(--primary); padding: 6px 12px; border-radius: 10px; display: flex; align-items: center; gap: 10px; font-size: 0.85rem;">
+                                        <span>${new Date(h).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                                        <button onclick="window.removeHoliday('${h}')" style="background: none; border: none; color: var(--danger); cursor: pointer; font-size: 1.1rem; padding: 0;">&times;</button>
+                                    </div>
+                                `).join('') : 
+                                '<p style="color: var(--text-muted); font-size: 0.85rem; font-style: italic;">No holidays scheduled.</p>'
+                            }
+                        </div>
+                    </div>
+                </div>
+
+                <div class="header" style="margin-top: 40px; margin-bottom: 20px;">
                     <h2 style="font-size: 1.2rem; margin:0;">Data Management</h2>
                 </div>
 
@@ -2189,6 +2248,35 @@
 
     window.closeModal = () => {
         document.getElementById('studentModal').style.display = 'none';
+    };
+
+    window.addHoliday = () => {
+        const dateInput = document.getElementById('newHolidayDate');
+        const date = dateInput.value;
+        if (!date) {
+            showToast('Please select a date', 'warning');
+            return;
+        }
+        
+        if (!state.config.holidays) state.config.holidays = [];
+        if (state.config.holidays.includes(date)) {
+            showToast('Date is already a holiday', 'warning');
+            return;
+        }
+        
+        state.config.holidays.push(date);
+        saveData();
+        renderAdmin();
+        showToast('Holiday added', 'success');
+        dateInput.value = '';
+    };
+
+    window.removeHoliday = (date) => {
+        if (!confirm('Remove this holiday?')) return;
+        state.config.holidays = state.config.holidays.filter(h => h !== date);
+        saveData();
+        renderAdmin();
+        showToast('Holiday removed', 'success');
     };
 
     // --- Backup & Restore Logic ---
