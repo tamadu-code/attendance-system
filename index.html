@@ -1386,6 +1386,22 @@
         }, 1000);
     }
 
+    function isSessionDay(dateStr) {
+        if (state.config.isTermClosed) return { isSession: false, reason: 'School is closed for the term.' };
+        
+        const date = new Date(dateStr);
+        const day = date.getDay(); // 0 = Sun, 6 = Sat
+        if ((day === 0 || day === 6) && !state.config.recordOnWeekends) {
+            return { isSession: false, reason: 'Attendance is not recorded on weekends.' };
+        }
+        
+        if (state.config.holidays && state.config.holidays.includes(dateStr)) {
+            return { isSession: false, reason: 'Today is a scheduled school holiday.' };
+        }
+        
+        return { isSession: true };
+    }
+
     // --- Kiosk Logic ---
     function handleKeypad(key) {
         vibrate(40); // Subtle pulse on touch
@@ -1949,37 +1965,55 @@
                         <button class="btn btn-danger btn-sm" style="background: var(--danger, #ef4444); border: none; color: white; margin-left: auto;" onclick="signOutAllToday()">🔴 Sign Out All</button>
                     </div>
                 </div>
-                <div class="table-container">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th ${thClick('name')}>Student ${sortIcon('name')}</th>
-                                <th ${thClick('class')}>Class ${sortIcon('class')}</th>
-                                <th ${thClick('in')}>Sign In ${sortIcon('in')}</th>
-                                <th ${thClick('out')}>Sign Out ${sortIcon('out')}</th>
-                                <th ${thClick('status')}>Status ${sortIcon('status')}</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            ${sorted.length ? sorted.map(s => {
-                                const log = logs[s.id] || {};
-                                return `
+                ${(() => {
+                    const session = isSessionDay(state.ui.viewDate);
+                    // If there's at least one record, we show the table anyway (failsafe)
+                    const hasRecords = Object.values(logs).some(l => l.in);
+                    
+                    if (!session.isSession && !hasRecords) {
+                        return `
+                            <div style="padding: 60px 20px; text-align: center; background: rgba(255,255,255,0.02); border-radius: 20px; border: 1px dashed var(--border-glass);">
+                                <div style="font-size: 3rem; margin-bottom: 15px;">🛌</div>
+                                <h3 style="color: var(--text-main); margin-bottom: 8px;">No School Session</h3>
+                                <p style="color: var(--text-muted); font-size: 0.9rem;">${session.reason}</p>
+                            </div>
+                        `;
+                    }
+
+                    return `
+                        <div class="table-container">
+                            <table>
+                                <thead>
                                     <tr>
-                                        <td data-label="Student">${s.name}</td>
-                                        <td data-label="Class">${s.class}</td>
-                                        <td data-label="Sign In">${log.in || '—'}</td>
-                                        <td data-label="Sign Out">${log.out || '—'}</td>
-                                        <td data-label="Status">
-                                            ${log.in ? 
-                                                (log.late ? '<span class="badge badge-late">Late</span>' : '<span class="badge badge-present">Present</span>') : 
-                                                '<span class="badge badge-absent">Absent</span>'}
-                                        </td>
+                                        <th ${thClick('name')}>Student ${sortIcon('name')}</th>
+                                        <th ${thClick('class')}>Class ${sortIcon('class')}</th>
+                                        <th ${thClick('in')}>Sign In ${sortIcon('in')}</th>
+                                        <th ${thClick('out')}>Sign Out ${sortIcon('out')}</th>
+                                        <th ${thClick('status')}>Status ${sortIcon('status')}</th>
                                     </tr>
-                                `;
-                            }).join('') : '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);">No students in this class.</td></tr>'}
-                        </tbody>
-                    </table>
-                </div>
+                                </thead>
+                                <tbody>
+                                    ${sorted.length ? sorted.map(s => {
+                                        const log = logs[s.id] || {};
+                                        return `
+                                            <tr>
+                                                <td data-label="Student">${s.name}</td>
+                                                <td data-label="Class">${s.class}</td>
+                                                <td data-label="Sign In">${log.in || '—'}</td>
+                                                <td data-label="Sign Out">${log.out || '—'}</td>
+                                                <td data-label="Status">
+                                                    ${log.in ? 
+                                                        (log.late ? '<span class="badge badge-late">Late</span>' : '<span class="badge badge-present">Present</span>') : 
+                                                        '<span class="badge badge-absent">Absent</span>'}
+                                                </td>
+                                            </tr>
+                                        `;
+                                    }).join('') : '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);">No students in this class.</td></tr>'}
+                                </tbody>
+                            </table>
+                        </div>
+                    `;
+                })()}
             </div>
         `;
     }
