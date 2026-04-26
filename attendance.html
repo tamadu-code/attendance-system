@@ -681,7 +681,7 @@
                 { id: '2', name: 'Michael Chen', class: 'Grade 5A', code: '5678' },
                 { id: '3', name: 'Sophia Rodriguez', class: 'Grade 5B', code: '9012' }
             ];
-            saveData();
+            // saveData(); // Removed to prevent overwriting cloud data on first load
         }
         document.getElementById('cutoffDisplay').textContent = state.config.lateTime;
         sortStudents();

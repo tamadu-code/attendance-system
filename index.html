@@ -956,10 +956,14 @@
                 { id: '2', name: 'Michael Chen', class: 'Grade 5A', code: '5678' },
                 { id: '3', name: 'Sophia Rodriguez', class: 'Grade 5B', code: '9012' }
             ];
-            saveData();
         }
-        document.getElementById('cutoffDisplay').textContent = state.config.lateTime;
+        updateCutoffDisplay();
         sortStudents();
+    }
+
+    function updateCutoffDisplay() {
+        const el = document.getElementById('cutoffDisplay');
+        if (el) el.textContent = state.config.lateTime;
     }
 
     // --- Persistence (Supabase + Local Backup) ---
@@ -1134,6 +1138,7 @@
             const { data: settingsData } = await supabaseClient.from('settings').select('value').eq('key', 'config').single();
             if (settingsData && state.ui.adminSection !== 'settings') {
                 state.config = { ...state.config, ...settingsData.value };
+                updateCutoffDisplay();
             }
 
             render();
