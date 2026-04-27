@@ -10,13 +10,13 @@
     <meta name="mobile-web-app-capable" content="yes">
     <link rel="manifest" href="manifest.json">
     <title>Attendance | Filter by Class | Kiosk + Admin</title>
-    <script src="https://unpkg.com/html5-qrcode"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="lib/html5-qrcode.min.js"></script>
+    <script src="lib/xlsx.full.min.js"></script>
     
     <!-- Supabase SDK -->
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="lib/supabase.js"></script>
     <!-- Chart.js -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="lib/chart.js"></script>
 
     <script>
         // Prevent theme flash
@@ -29,7 +29,15 @@
         // --- Supabase Configuration ---
         const SUPABASE_URL = "https://wuzliodvddzmhehffqfx.supabase.co";
         const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Ind1emxpb2R2ZGR6bWhlaGZmcWZ4Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzY4NTkxNTEsImV4cCI6MjA5MjQzNTE1MX0.0ASY-NuhdHPhyg9pB2XYiXOLJTnrocXxjkC6gpqO_vQ";
-        const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        
+        // Safe initialization
+        let supabaseClient = null;
+        if (typeof supabase !== 'undefined') {
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+        } else {
+            console.error("Supabase library not loaded. Offline mode active.");
+        }
+
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
                 navigator.serviceWorker.register('sw.js').catch(err => console.log('SW registration failed', err));
@@ -971,6 +979,8 @@
         // Local Backup
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
         
+        if (!navigator.onLine || !supabaseClient) return;
+
         try {
             // 1. Sync Settings (Theme/Cutoff)
             const { error } = await supabaseClient.from('settings').upsert({ 
@@ -982,7 +992,6 @@
             console.log("Settings synced to cloud successfully");
         } catch (e) {
             console.warn("Supabase background sync failed:", e);
-            showToast("Cloud Save Failed", "warning");
         }
     }
 
@@ -1018,7 +1027,7 @@
     }
 
     async function tryPushPending() {
-        if (!navigator.onLine || !state.pendingSync || state.pendingSync.length === 0) {
+        if (!navigator.onLine || !supabaseClient || !state.pendingSync || state.pendingSync.length === 0) {
             updateSyncIndicator();
             return;
         }
@@ -1108,6 +1117,10 @@
     }
 
     async function syncAllData() {
+        if (!navigator.onLine || !supabaseClient) {
+            updateSyncIndicator();
+            return;
+        }
         try {
             // Push any offline records FIRST to preserve earliest timestamps
             await tryPushPending();
