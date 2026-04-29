@@ -20,7 +20,7 @@ BEGIN
       ),
       body := jsonb_build_object(
         'type', 'INSERT',
-        'table', 'attendance_log',
+        'table', 'attendance',
         'record', row_to_json(NEW)
       )
     );
@@ -29,8 +29,8 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 3. Create the trigger
-DROP TRIGGER IF EXISTS on_attendance_insert ON public.attendance_log;
+DROP TRIGGER IF EXISTS on_attendance_insert ON public.attendance;
 CREATE TRIGGER on_attendance_insert
-  AFTER INSERT ON public.attendance_log
+  AFTER INSERT ON public.attendance
   FOR EACH ROW
   EXECUTE FUNCTION public.handle_attendance_insert();
