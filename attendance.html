@@ -668,31 +668,40 @@
     function loadData() {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
-            const data = JSON.parse(saved);
-            state.students = data.students || [];
-            state.attendance = data.attendance || {};
-            state.config = data.config || state.config;
-            state.ui.kioskCode = '';
-            state.ui.searchQuery = '';
+            try {
+                const data = JSON.parse(saved);
+                state.students = data.students || [];
+                state.attendance = data.attendance || {};
+                state.config = { ...state.config, ...(data.config || {}) };
+                // Keep tracks if this was real data or demo
+                state.isDemo = data.isDemo || false;
+            } catch (e) {
+                console.error("Error parsing local storage:", e);
+                initDemoData();
+            }
         } else {
-            // Default Demo Students
-            state.students = [
-                { id: '1', name: 'Emma Johnson', class: 'Grade 5A', code: '1234' },
-                { id: '2', name: 'Michael Chen', class: 'Grade 5A', code: '5678' },
-                { id: '3', name: 'Sophia Rodriguez', class: 'Grade 5B', code: '9012' }
-            ];
-            // saveData(); // Removed to prevent overwriting cloud data on first load
+            initDemoData();
         }
         document.getElementById('cutoffDisplay').textContent = state.config.lateTime;
         sortStudents();
     }
 
+    function initDemoData() {
+        state.isDemo = true;
+        state.students = [
+            { id: '1', name: 'Emma Johnson', class: 'Grade 5A', code: '1234' },
+            { id: '2', name: 'Michael Chen', class: 'Grade 5A', code: '5678' },
+            { id: '3', name: 'Sophia Rodriguez', class: 'Grade 5B', code: '9012' }
+        ];
+    }
+
     function saveData() {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify({
-            students: state.students,
-            attendance: state.attendance,
-            config: state.config
-        }));
+        // Prevent demo data from overwriting real data
+        if (state.isDemo && localStorage.getItem(STORAGE_KEY)) {
+            console.log("Skipping save: in demo mode and previous data exists.");
+            return;
+        }
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
     }
 
     // --- Student Logic ---

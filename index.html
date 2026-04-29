@@ -134,9 +134,21 @@
             background: #64748b;
             transition: all 0.3s ease;
         }
-        .sync-indicator.online { background: #10b981; box-shadow: 0 0 10px rgba(16, 185, 129, 0.4); }
-        .sync-indicator.offline { background: #ef4444; box-shadow: 0 0 10px rgba(239, 68, 68, 0.4); }
-        .sync-indicator.pending { background: #f59e0b; animation: syncPulse 1.5s infinite; }
+        .demo-label {
+            background: var(--warning);
+            color: #000;
+            font-size: 0.6rem;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 800;
+            text-transform: uppercase;
+            display: none;
+            margin-left: 5px;
+        }
+
+        .sync-indicator.online { background: var(--success); box-shadow: 0 0 10px var(--success); }
+        .sync-indicator.offline { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
+        .sync-indicator.pending { background: var(--warning); box-shadow: 0 0 10px var(--warning); animation: syncPulse 1.5s infinite; }
 
         @keyframes syncPulse {
             0% { opacity: 1; transform: scale(1); }
@@ -768,6 +780,7 @@
         <div class="header">
             <div style="display: flex; align-items: center; gap: 15px;">
                 <div id="syncIndicator" class="sync-indicator online"></div>
+                <div id="demoLabel" class="demo-label">Demo</div>
                 <div class="hamburger" id="hamburgerBtn">
                     <span></span>
                     <span></span>
@@ -845,6 +858,7 @@
         students: [],
         attendance: {},
         pendingSync: [],
+        isDemo: false,
         config: {
             lateTime: '08:30',
             schoolName: 'NKQM ATTENDANCE',
@@ -950,23 +964,37 @@
     function loadData() {
         const saved = localStorage.getItem(STORAGE_KEY);
         if (saved) {
-            const data = JSON.parse(saved);
-            state.students = data.students || [];
-            state.attendance = data.attendance || {};
-            state.config = { ...state.config, ...(data.config || {}) };
-            state.pendingSync = data.pendingSync || []; // Restore offline queue
-            state.ui.kioskCode = '';
-            state.ui.searchQuery = '';
+            try {
+                const data = JSON.parse(saved);
+                state.students = data.students || [];
+                state.attendance = data.attendance || {};
+                state.config = { ...state.config, ...(data.config || {}) };
+                state.pendingSync = data.pendingSync || [];
+                state.ui.theme = data.ui?.theme || state.ui.theme;
+                state.ui.lastSync = data.ui?.lastSync || null;
+                
+                // If we have students, we are no longer in "demo" mode
+                if (state.students.length > 0) {
+                    console.log("Loaded cached data for", state.students.length, "students");
+                }
+            } catch (e) {
+                console.error("Error parsing local storage:", e);
+                initDemoData();
+            }
         } else {
-            // Default Demo Students
-            state.students = [
-                { id: '1', name: 'Emma Johnson', class: 'Grade 5A', code: '1234' },
-                { id: '2', name: 'Michael Chen', class: 'Grade 5A', code: '5678' },
-                { id: '3', name: 'Sophia Rodriguez', class: 'Grade 5B', code: '9012' }
-            ];
+            initDemoData();
         }
         updateCutoffDisplay();
         sortStudents();
+    }
+
+    function initDemoData() {
+        state.isDemo = true;
+        state.students = [
+            { id: '1', name: 'Emma Johnson', class: 'Grade 5A', code: '1234' },
+            { id: '2', name: 'Michael Chen', class: 'Grade 5A', code: '5678' },
+            { id: '3', name: 'Sophia Rodriguez', class: 'Grade 5B', code: '9012' }
+        ];
     }
 
     function updateCutoffDisplay() {
@@ -976,8 +1004,12 @@
 
     // --- Persistence (Supabase + Local Backup) ---
     async function saveData() {
-        // Local Backup
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        // Prevent saving demo data back to local storage if we already have real data
+        if (state.isDemo && localStorage.getItem(STORAGE_KEY)) {
+            console.log("Skipping localStorage save: App is in demo mode and previous data exists.");
+        } else {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+        }
         
         if (!navigator.onLine || !supabaseClient) return;
 
@@ -1098,7 +1130,12 @@
 
     function updateSyncIndicator(forceStatus = null) {
         const indicator = document.getElementById('syncIndicator');
+        const demoLabel = document.getElementById('demoLabel');
         if (!indicator) return;
+
+        if (demoLabel) {
+            demoLabel.style.display = state.isDemo ? 'inline-block' : 'none';
+        }
 
         indicator.classList.remove('online', 'offline', 'pending');
         
@@ -1119,15 +1156,31 @@
     async function syncAllData() {
         if (!navigator.onLine || !supabaseClient) {
             updateSyncIndicator();
+            if (!navigator.onLine) {
+                console.log("Offline mode: Using cached data.");
+                if (state.ui.lastSync) {
+                    showToast(`Offline mode. Last synced: ${new Date(state.ui.lastSync).toLocaleTimeString()}`, 'warning');
+                }
+            }
             return;
         }
+
         try {
+            updateSyncIndicator('pending');
+            
             // Push any offline records FIRST to preserve earliest timestamps
             await tryPushPending();
             
             // 1. Fetch Students
-            const { data: studentList } = await supabaseClient.from('students').select('*');
-            if (studentList) {
+            const { data: studentList, error: studentError } = await supabaseClient
+                .from('students')
+                .select('*')
+                .eq('is_active', true); // Only fetch active students
+            
+            if (studentError) throw studentError;
+
+            if (studentList && studentList.length > 0) {
+                state.isDemo = false; // Real data received!
                 state.students = studentList.map(s => ({
                     id: s.id,
                     name: s.name,
@@ -1139,7 +1192,13 @@
 
             // 2. Fetch Today's Attendance
             const today = new Date().toISOString().split('T')[0];
-            const { data: attendanceList } = await supabaseClient.from('attendance').select('*').eq('date', today);
+            const { data: attendanceList, error: attError } = await supabaseClient
+                .from('attendance')
+                .select('*')
+                .eq('date', today);
+            
+            if (attError) throw attError;
+
             if (attendanceList) {
                 state.attendance[today] = {};
                 attendanceList.forEach(a => {
@@ -1147,28 +1206,51 @@
                 });
             }
 
-            // 3. Fetch Settings (Only if not currently editing them in Admin)
-            const { data: settingsData } = await supabaseClient.from('settings').select('value').eq('key', 'config').single();
+            // 3. Fetch Settings
+            const { data: settingsData } = await supabaseClient
+                .from('settings')
+                .select('value')
+                .eq('key', 'config')
+                .single();
+                
             if (settingsData && state.ui.adminSection !== 'settings') {
                 state.config = { ...state.config, ...settingsData.value };
                 updateCutoffDisplay();
             }
 
-            render();
+            // Update sync timestamp
+            state.ui.lastSync = Date.now();
 
-            // 4. Real-time Subscriptions
-            supabaseClient.channel('custom-all-channel')
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, payload => {
-                    refreshStudents();
-                })
-                .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, payload => {
-                    refreshAttendance();
-                })
-                .subscribe();
+            // CRITICAL: Save fetched cloud data to local storage for offline use
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+
+            render();
+            updateSyncIndicator('online');
+
+            // 4. Real-time Subscriptions (Optional: Re-connect if needed)
+            setupSubscriptions();
+
         } catch (e) {
-            showToast('Supabase Sync Error', 'danger');
-            console.error(e);
+            console.error("Supabase Sync Error:", e);
+            updateSyncIndicator('offline');
+            showToast('Sync failed. Using cached data.', 'warning');
         }
+    }
+
+    function setupSubscriptions() {
+        // Clear existing if any (Supabase handles some of this, but good to be safe)
+        supabaseClient.removeAllChannels();
+
+        supabaseClient.channel('custom-all-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, payload => {
+                console.log("Real-time update: Students changed");
+                refreshStudents();
+            })
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, payload => {
+                console.log("Real-time update: Attendance changed");
+                refreshAttendance();
+            })
+            .subscribe();
     }
 
     async function refreshStudents() {
@@ -1176,6 +1258,7 @@
         if (data) {
             state.students = data;
             sortStudents();
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
             render();
         }
     }
@@ -1200,6 +1283,7 @@
             } else {
                 // showToast(`No records found for ${date}`, 'warning');
             }
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
             render();
         } catch (e) {
             console.error("Error fetching attendance for date:", date, e);
@@ -1247,6 +1331,7 @@
                     state.attendance[a.date][a.student_id] = { in: a.sign_in, out: a.sign_out, late: a.is_late };
                 });
                 lastFetchedMonth = month;
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
                 render();
             }
         } catch (e) {
@@ -1647,6 +1732,7 @@
 
     function render() {
         updateBranding();
+        updateSyncIndicator();
         if (state.ui.currentMode === 'admin') {
             renderAdmin();
         } else {
