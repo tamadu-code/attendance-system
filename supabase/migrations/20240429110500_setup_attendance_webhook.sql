@@ -8,8 +8,8 @@ CREATE EXTENSION IF NOT EXISTS pg_net;
 CREATE OR REPLACE FUNCTION public.handle_attendance_insert()
 RETURNS TRIGGER AS $$
 DECLARE
-  webhook_url TEXT := 'https://your-sms-gateway-endpoint'; -- Replace with actual SMS gateway or Edge Function URL
-  secret_token TEXT := 'your-shared-secret'; -- Ideally set via vault or app settings
+  webhook_url TEXT := 'https://urqygjltionvaxuacfzr.supabase.co/functions/v1/receive-attendance'; 
+  secret_token TEXT := 'Tam360Du180'; 
 BEGIN
   PERFORM
     net.http_post(
@@ -18,10 +18,11 @@ BEGIN
         'Content-Type', 'application/json',
         'Authorization', 'Bearer ' || secret_token
       ),
+      -- Mapping Attendance System columns to SMS Function expectations
       body := jsonb_build_object(
-        'type', 'INSERT',
-        'table', 'attendance',
-        'record', row_to_json(NEW)
+        'attendance_code', NEW.student_id, -- Using student_id as the code
+        'status', NEW.status,
+        'date', NEW.date
       )
     );
   RETURN NEW;
