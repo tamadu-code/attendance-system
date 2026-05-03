@@ -1,42 +1,68 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-serve(async (req) => {
-  // 1. Check Secret using custom header to bypass Supabase JWT filters
-  const AUTO_SIGNOUT_SECRET = Deno.env.get('AUTO_SIGNOUT_SECRET')
-  const clientSecret = req.headers.get('X-Auto-Signout-Secret')
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-auto-signout-secret',
+}
 
-  if (!clientSecret || clientSecret !== AUTO_SIGNOUT_SECRET) {
-    return new Response(JSON.stringify({
-      error: 'Unauthorized',
-      message: 'Secret mismatch. Check X-Auto-Signout-Secret header.'
-    }), { status: 401, headers: { "Content-Type": "application/json" } })
+serve(async (req) => {
+  // Handle CORS
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
   }
 
-  const SUPABASE_URL = Deno.env.get('SUPABASE_URL') ?? ''
-  const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
-
   try {
-    const today = new Date().toISOString().split('T')[0]
-    const nowUtc = new Date()
+    // 1. Validate Secret
+    const AUTO_SIGNOUT_SECRET = Deno.env.get('AUTO_SIGNOUT_SECRET')
+    const clientSecret = req.headers.get('X-Auto-Signout-Secret')
 
-    // 1. Get Config from settings table
+    if (!AUTO_SIGNOUT_SECRET) {
+      console.error("Environment variable AUTO_SIGNOUT_SECRET is not set.")
+      return new Response(JSON.stringify({ error: 'Server Configuration Error', message: 'AUTO_SIGNOUT_SECRET missing.' }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } })
+    }
+
+    if (!clientSecret || clientSecret !== AUTO_SIGNOUT_SECRET) {
+      console.warn(`Unauthorized attempt with secret: ${clientSecret?.substring(0, 3)}...`)
+      return new Response(JSON.stringify({ error: 'Unauthorized', message: 'Secret mismatch.' }), { status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" } })
+    }
+
+    // 2. Initialize Supabase
+    const SUPABASE_URL = Deno.env.get('SUPABASE_URL')
+    const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')
+    
+    if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+      throw new Error("Missing Supabase credentials in environment.")
+    }
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+
+    // 3. Execution Context
+    const nowUtc = new Date()
+    const today = nowUtc.toISOString().split('T')[0]
+    console.log(`[${nowUtc.toISOString()}] Starting staggered sign-out process for date: ${today}`)
+
+    // 4. Get Config
     const { data: settings, error: settingsError } = await supabase
       .from('settings')
       .select('value')
       .eq('key', 'config')
       .single()
 
-    if (settingsError || !settings) throw new Error('Configuration not found in settings table.')
+    if (settingsError || !settings) {
+      console.error("Settings error:", settingsError)
+      throw new Error('Configuration row "config" not found in "settings" table.')
+    }
 
-    const config = settings.value
+    const config = settings.value || {}
     const schoolClosingTime = config.school_closing_time || '15:30'
     const groupSize = config.dismissal_group_size || 20
     const intervalMinutes = config.dismissal_interval_minutes || 1
 
-    // 2. Manage Daily Groups
-    const { data: groups, error: groupsError } = await supabase
+    console.log(`Config: Closing Time=${schoolClosingTime}, Group Size=${groupSize}, Interval=${intervalMinutes}m`)
+
+    // 5. Manage Daily Groups (Randomize order once per day)
+    const { data: groupsExist, error: groupsError } = await supabase
       .from('daily_groups')
       .select('student_id')
       .eq('date', today)
@@ -44,22 +70,38 @@ serve(async (req) => {
 
     if (groupsError) throw groupsError
 
-    if (groups.length === 0) {
-      const { data: students, error: studentsError } = await supabase.from('students').select('id')
+    if (groupsExist.length === 0) {
+      console.log(`Populating daily_groups for ${today}...`)
+      const { data: activeStudents, error: studentsError } = await supabase
+        .from('students')
+        .select('id')
+        .eq('is_active', true)
+
       if (studentsError) throw studentsError
+      
+      if (activeStudents && activeStudents.length > 0) {
+        // Robust Shuffle (Fisher-Yates)
+        const shuffled = [...activeStudents]
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+        }
 
-      const shuffled = students.sort(() => Math.random() - 0.5)
-      const groupData = shuffled.map((s, index) => ({
-        date: today,
-        student_id: s.id,
-        group_index: Math.floor(index / groupSize)
-      }))
+        const groupData = shuffled.map((s, index) => ({
+          date: today,
+          student_id: s.id,
+          group_index: Math.floor(index / groupSize)
+        }))
 
-      const { error: insertError } = await supabase.from('daily_groups').insert(groupData)
-      if (insertError) throw insertError
+        const { error: insertError } = await supabase.from('daily_groups').insert(groupData)
+        if (insertError) throw insertError
+        console.log(`Created ${groupData.length} group assignments.`)
+      } else {
+        console.log("No active students found to assign to groups.")
+      }
     }
 
-    // 3. Process Automatic Sign-outs
+    // 6. Identify Students to Sign Out
     const { data: attendance, error: attendanceError } = await supabase
       .from('attendance')
       .select('student_id, sign_in, sign_out')
@@ -68,12 +110,13 @@ serve(async (req) => {
       .is('sign_out', null)
 
     if (attendanceError) throw attendanceError
-    if (attendance.length === 0) {
-      return new Response(JSON.stringify({ message: 'Success: No students active to sign out.' }), {
-        status: 200, headers: { "Content-Type": "application/json" }
-      })
+    
+    if (!attendance || attendance.length === 0) {
+      console.log("No active students (present but not signed out) found.")
+      return new Response(JSON.stringify({ message: 'Success: No students active to sign out.' }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } })
     }
 
+    // 7. Get Group Indices for Active Students
     const studentIds = attendance.map(a => a.student_id)
     const { data: studentGroups, error: sgError } = await supabase
       .from('daily_groups')
@@ -84,20 +127,21 @@ serve(async (req) => {
     if (sgError) throw sgError
 
     const groupMap = new Map(studentGroups.map(sg => [sg.student_id, sg.group_index]))
-    
-    // Nigeria is UTC+1. Constructing the baseTime in UTC then adjusting by -1 hour 
-    // to match the local closing time string (e.g., 15:30 WAT = 14:30 UTC)
+
+    // 8. Calculate Thresholds
+    // Convert School Closing Time (WAT, UTC+1) to UTC Reference
     const [hours, minutes] = schoolClosingTime.split(':').map(Number)
     const baseTimeUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate(), hours, minutes, 0))
-    const schoolBaseTime = new Date(baseTimeUtc.getTime() - (1 * 60 * 60 * 1000)) // Subtract 1 hour for WAT (UTC+1)
-
-    let signedOutCount = 0
+    const schoolBaseTime = new Date(baseTimeUtc.getTime() - (1 * 60 * 60 * 1000)) // WAT -> UTC adjustment
     
-    // For the record display, we use the local time string (WAT)
-    const localNow = new Date(nowUtc.getTime() + (1 * 60 * 60 * 1000))
+    const localNow = new Date(nowUtc.getTime() + (1 * 60 * 60 * 1000)) // UTC -> WAT for display
     const timeStr = `${String(localNow.getUTCHours()).padStart(2, '0')}:${String(localNow.getUTCMinutes()).padStart(2, '0')}`
 
-    console.log(`Processing Auto Sign-out for ${today}. School Local Time: ${timeStr}. UTC: ${nowUtc.toISOString()}`)
+    console.log(`Dismissal Window: Base (WAT)=${schoolClosingTime}, Base (UTC)=${schoolBaseTime.toISOString()}. Current (WAT)=${timeStr}`)
+
+    // 9. Update Attendance Records
+    let signedOutCount = 0
+    let skippedCount = 0
 
     for (const record of attendance) {
       const groupIndex = groupMap.get(record.student_id) ?? 0
@@ -109,24 +153,27 @@ serve(async (req) => {
           .update({ sign_out: timeStr })
           .match({ student_id: record.student_id, date: today })
         
-        if (!updateError) {
+        if (updateError) {
+          console.error(`Failed to update student ${record.student_id}:`, updateError)
+        } else {
           signedOutCount++
-          console.log(`Auto-signed out student ${record.student_id} at ${timeStr}`)
         }
+      } else {
+        skippedCount++
       }
     }
 
-    console.log(`Auto sign-out complete. Signed out ${signedOutCount} students.`)
+    console.log(`Process Complete: Signed out ${signedOutCount}, Queued ${skippedCount}.`)
 
     return new Response(JSON.stringify({
-      message: `Success: System checked ${attendance.length} records and signed out ${signedOutCount} students.`,
-      timestamp: nowUtc.toISOString(),
+      message: `System checked ${attendance.length} records.`,
+      signed_out: signedOutCount,
+      queued: skippedCount,
       local_time: timeStr
-    }), { status: 200, headers: { "Content-Type": "application/json" } })
+    }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } })
 
   } catch (err) {
-    return new Response(JSON.stringify({ error: err.message }), {
-      status: 500, headers: { "Content-Type": "application/json" }
-    })
+    console.error("Function Error:", err)
+    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } })
   }
 })

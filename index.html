@@ -2463,6 +2463,7 @@
                         📥 Restore System from Backup
                         <input type="file" accept=".json" hidden onchange="restoreData(this)">
                     </label>
+                    <button class="btn btn-warning" onclick="window.triggerAutoSignout()" style="padding: 12px 24px;">🤖 Trigger Automatic Staggered Signout</button>
                 </div>
             </div>
         `;
@@ -2482,7 +2483,6 @@
         if (!confirm(`Are you sure you want to sign out ALL ${activeIds.length} students currently present for ${today}?`)) return;
         
         const timeStr = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
-        
         const updates = activeIds.map(id => ({
             student_id: id,
             date: today,
@@ -2496,16 +2496,49 @@
             const { error } = await supabaseClient.from('attendance').upsert(updates, { onConflict: 'student_id,date' });
             if (error) throw error;
             
-            // Update local state
             activeIds.forEach(id => {
                 state.attendance[today][id].out = timeStr;
             });
-            
-            showToast(`Successfully signed out ${activeIds.length} students`, 'success');
+            saveData();
             renderAdmin();
+            showToast(`Successfully signed out ${activeIds.length} students.`, 'success');
         } catch (e) {
             console.error(e);
             showToast("Bulk sign-out failed: " + e.message, "danger");
+        }
+    };
+
+    window.triggerAutoSignout = async () => {
+        if (!navigator.onLine) {
+            showToast("Internet connection required to trigger cloud function.", "warning");
+            return;
+        }
+
+        if (!confirm("This will trigger the cloud-based staggered signout process. It will check all currently active students and sign them out if their scheduled time has passed. Proceed?")) return;
+
+        try {
+            showToast("Triggering automatic signout...", "primary");
+            
+            const response = await fetch(`${SUPABASE_URL}/functions/v1/staggered-signout`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Auto-Signout-Secret': 'Tam360Du180' // Matches the migration secret
+                },
+                body: JSON.stringify({})
+            });
+
+            const result = await response.json();
+            
+            if (response.ok) {
+                showToast(result.message || "Auto-signout triggered successfully", "success");
+                await syncAllData();
+            } else {
+                throw new Error(result.error || result.message || "Failed to trigger auto-signout");
+            }
+        } catch (e) {
+            console.error("Trigger Error:", e);
+            showToast(`Error: ${e.message}`, "danger");
         }
     };
 
