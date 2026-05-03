@@ -22,7 +22,7 @@ BEGIN
         'staggered-signout-job',
         '* * * * *',
         format(
-            $$
+            $command$
             SELECT net.http_post(
                 url := %L,
                 headers := jsonb_build_object(
@@ -30,8 +30,8 @@ BEGIN
                     'X-Auto-Signout-Secret', %L
                 ),
                 body := '{}'
-            )
-            $$,
+            );
+            $command$,
             function_url,
             auto_signout_secret
         )
