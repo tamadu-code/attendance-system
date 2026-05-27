@@ -60,6 +60,18 @@ serve(async (req) => {
     const groupSize = config.dismissal_group_size || 20
     const intervalMinutes = config.dismissal_interval_minutes || 1
 
+    // 4b. Holiday & Term Closure Safeguards
+    const holidays = config.holidays || []
+    if (holidays.includes(today)) {
+      console.log(`[${today}] Today is a scheduled school holiday. Aborting staggered sign-out.`)
+      return new Response(JSON.stringify({ message: 'Success: Today is a scheduled holiday. No action required.' }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } })
+    }
+
+    if (config.isTermClosed) {
+      console.log(`[${today}] School term is closed. Aborting staggered sign-out.`)
+      return new Response(JSON.stringify({ message: 'Success: School term is closed. No action required.' }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } })
+    }
+
     console.log(`Config: Closing Time=${schoolClosingTime}, Group Size=${groupSize}, Interval=${intervalMinutes}m`)
 
     // 5. Manage Daily Groups (Randomize order once per day)
