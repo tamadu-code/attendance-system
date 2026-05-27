@@ -2523,7 +2523,8 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'X-Auto-Signout-Secret': 'Tam360Du180' // Matches the migration secret
+                    'X-Auto-Signout-Secret': 'Tam360Du180',
+                    'Authorization': `Bearer ${SUPABASE_KEY}`
                 },
                 body: JSON.stringify({})
             });

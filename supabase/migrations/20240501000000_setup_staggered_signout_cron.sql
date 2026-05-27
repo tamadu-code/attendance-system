@@ -27,7 +27,8 @@ BEGIN
                 url := %L,
                 headers := jsonb_build_object(
                     'Content-Type', 'application/json',
-                    'X-Auto-Signout-Secret', %L
+                    'X-Auto-Signout-Secret', %L,
+                    'Authorization', 'Bearer ' || current_setting('supabase.service_role_key', true)
                 ),
                 body := '{}'
             );

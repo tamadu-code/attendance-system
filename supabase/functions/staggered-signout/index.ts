@@ -39,8 +39,9 @@ serve(async (req) => {
 
     // 3. Execution Context
     const nowUtc = new Date()
-    const today = nowUtc.toISOString().split('T')[0]
-    console.log(`[${nowUtc.toISOString()}] Starting staggered sign-out process for date: ${today}`)
+    const localNow = new Date(nowUtc.getTime() + (1 * 60 * 60 * 1000)) // UTC -> WAT (UTC+1)
+    const today = localNow.toISOString().split('T')[0] // WAT date, not UTC
+    console.log(`[${nowUtc.toISOString()}] Starting staggered sign-out process for date: ${today} (WAT)`)
 
     // 4. Get Config
     const { data: settings, error: settingsError } = await supabase
@@ -134,7 +135,7 @@ serve(async (req) => {
     const baseTimeUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate(), hours, minutes, 0))
     const schoolBaseTime = new Date(baseTimeUtc.getTime() - (1 * 60 * 60 * 1000)) // WAT -> UTC adjustment
     
-    const localNow = new Date(nowUtc.getTime() + (1 * 60 * 60 * 1000)) // UTC -> WAT for display
+    // localNow already computed above (WAT = UTC+1)
     const timeStr = `${String(localNow.getUTCHours()).padStart(2, '0')}:${String(localNow.getUTCMinutes()).padStart(2, '0')}`
 
     console.log(`Dismissal Window: Base (WAT)=${schoolClosingTime}, Base (UTC)=${schoolBaseTime.toISOString()}. Current (WAT)=${timeStr}`)
