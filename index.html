@@ -1259,12 +1259,89 @@
             state.students = data;
             sortStudents();
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-            render();
+            if (state.ui.currentMode === 'admin') {
+                updateAdminDashboardSilently();
+            } else {
+                render();
+            }
         }
     }
 
     async function refreshAttendance() {
         await fetchAttendanceForDate(new Date().toISOString().split('T')[0]);
+    }
+
+    function updateAdminDashboardSilently() {
+        const today = new Date().toISOString().split('T')[0];
+        const todayLogs = state.attendance[today] || {};
+        
+        // 1. Calculate Stats
+        const total = state.students.length;
+        const present = Object.values(todayLogs).filter(l => l.in).length;
+        const late = Object.values(todayLogs).filter(l => l.late).length;
+        const absent = total - present;
+
+        // 2. Update Stats DOM elements if they exist
+        const totalEl = document.getElementById('stat-total-students');
+        const presentEl = document.getElementById('stat-present-students');
+        const absentEl = document.getElementById('stat-absent-students');
+        const lateEl = document.getElementById('stat-late-students');
+
+        if (totalEl) totalEl.textContent = total;
+        if (presentEl) presentEl.textContent = present;
+        if (absentEl) absentEl.textContent = absent;
+        if (lateEl) lateEl.textContent = late;
+
+        // 3. Update Table Body if viewing the logs for the viewed date
+        const tbodyEl = document.getElementById('daily-attendance-tbody');
+        if (tbodyEl) {
+            const logs = state.attendance[state.ui.viewDate] || {};
+            const sb = state.ui.dailySortBy;
+            const sd = state.ui.dailySortDir;
+            const fc = state.ui.dailyFilterClass;
+            const statusOrder = { 'Present': 0, 'Late': 1, 'Absent': 2 };
+
+            const filtered = state.students.filter(s => fc === 'all' || s.class === fc);
+            const sorted = [...filtered].sort((a, b) => {
+                const logA = logs[a.id] || {};
+                const logB = logs[b.id] || {};
+                let valA, valB;
+                if (sb === 'name')        { valA = a.name.toLowerCase(); valB = b.name.toLowerCase(); }
+                else if (sb === 'class')  { valA = (a.class || '').toLowerCase(); valB = (b.class || '').toLowerCase(); }
+                else if (sb === 'in')     { valA = logA.in || ''; valB = logB.in || ''; }
+                else if (sb === 'out')    { valA = logA.out || ''; valB = logB.out || ''; }
+                else if (sb === 'status') {
+                    const sA = logA.in ? (logA.late ? 'Late' : 'Present') : 'Absent';
+                    const sB = logB.in ? (logB.late ? 'Late' : 'Present') : 'Absent';
+                    valA = statusOrder[sA]; valB = statusOrder[sB];
+                }
+                if (valA < valB) return sd === 'asc' ? -1 : 1;
+                if (valA > valB) return sd === 'asc' ? 1 : -1;
+                return 0;
+            });
+
+            const newTbodyHtml = sorted.length ? sorted.map(s => {
+                const log = logs[s.id] || {};
+                return `
+                    <tr>
+                        <td data-label="Student">${s.name}</td>
+                        <td data-label="Class">${s.class}</td>
+                        <td data-label="Sign In">${log.in || '—'}</td>
+                        <td data-label="Sign Out">${log.out || '—'}</td>
+                        <td data-label="Status">
+                            ${log.in ? 
+                                (log.late ? '<span class="badge badge-late">Late</span>' : '<span class="badge badge-present">Present</span>') : 
+                                '<span class="badge badge-absent">Absent</span>'}
+                        </td>
+                    </tr>
+                `;
+            }).join('') : '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);">No students in this class.</td></tr>';
+
+            // Only update innerHTML if it has changed to prevent unnecessary repaints
+            if (tbodyEl.innerHTML !== newTbodyHtml) {
+                tbodyEl.innerHTML = newTbodyHtml;
+            }
+        }
     }
 
     async function fetchAttendanceForDate(date) {
@@ -1279,12 +1356,14 @@
                 data.forEach(a => {
                     state.attendance[date][a.student_id] = { in: a.sign_in, out: a.sign_out, late: a.is_late };
                 });
-                // showToast(`Loaded ${data.length} records for ${date}`, 'success');
-            } else {
-                // showToast(`No records found for ${date}`, 'warning');
             }
             localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-            render();
+            
+            if (state.ui.currentMode === 'admin') {
+                updateAdminDashboardSilently();
+            } else {
+                render();
+            }
         } catch (e) {
             console.error("Error fetching attendance for date:", date, e);
             showToast('Failed to fetch records: ' + (e.message || e), 'danger');
@@ -1844,19 +1923,19 @@
                 <div class="stats-grid">
                     <div class="stat-card">
                         <span class="stat-label">Total Students</span>
-                        <span class="stat-value">${total}</span>
+                        <span class="stat-value" id="stat-total-students">${total}</span>
                     </div>
                     <div class="stat-card">
                         <span class="stat-label">Present</span>
-                        <span class="stat-value" style="color: var(--success)">${present}</span>
+                        <span class="stat-value" id="stat-present-students" style="color: var(--success)">${present}</span>
                     </div>
                     <div class="stat-card">
                         <span class="stat-label">Absent</span>
-                        <span class="stat-value" style="color: var(--danger)">${absent}</span>
+                        <span class="stat-value" id="stat-absent-students" style="color: var(--danger)">${absent}</span>
                     </div>
                     <div class="stat-card">
                         <span class="stat-label">Late</span>
-                        <span class="stat-value" style="color: var(--accent)">${late}</span>
+                        <span class="stat-value" id="stat-late-students" style="color: var(--accent)">${late}</span>
                     </div>
                 </div>
             `;
@@ -2096,7 +2175,7 @@
                                         <th ${thClick('status')}>Status ${sortIcon('status')}</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody id="daily-attendance-tbody">
                                     ${sorted.length ? sorted.map(s => {
                                         const log = logs[s.id] || {};
                                         return `
