@@ -959,6 +959,13 @@
         await syncAllData();
         
         document.documentElement.classList.toggle('light-theme', state.ui.theme === 'light');
+
+        // Silent background polling refresh every 2 seconds when in admin mode
+        setInterval(async () => {
+            if (state.ui.currentMode === 'admin' && navigator.onLine && supabaseClient) {
+                await refreshAttendance();
+            }
+        }, 2000);
     }
 
     function loadData() {
@@ -972,6 +979,8 @@
                 state.pendingSync = data.pendingSync || [];
                 state.ui.theme = data.ui?.theme || state.ui.theme;
                 state.ui.lastSync = data.ui?.lastSync || null;
+                state.ui.currentMode = data.ui?.currentMode || 'kiosk';
+                state.ui.adminSection = data.ui?.adminSection || 'students';
                 
                 // If we have students, we are no longer in "demo" mode
                 if (state.students.length > 0) {
