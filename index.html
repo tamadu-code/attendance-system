@@ -954,6 +954,12 @@
         startClock();
         setupEventListeners();
         render();
+        updateNavActive(); // Restore hamburger & mode-switch visibility on refresh
+        
+        // If restoring into admin mode, load historical data for summary/reports
+        if (state.ui.currentMode === 'admin') {
+            fetchAllAttendance();
+        }
         
         // Connect to Cloud (real-time sync)
         await syncAllData();
@@ -2811,6 +2817,7 @@
             state.ui.currentMode = 'kiosk';
             updateNavActive();
             render();
+            saveData();
         };
 
         // Hamburger Menu Toggle
@@ -2820,15 +2827,16 @@
 
 
         // Sidebar Menu Items
-        document.getElementById('menuStudentManagement').onclick = () => { closeSidebar(); state.ui.adminSection = 'students'; render(); updateNavActive(); };
-        document.getElementById('menuDailyAttendance').onclick = () => { closeSidebar(); state.ui.adminSection = 'attendance'; render(); updateNavActive(); };
-        document.getElementById('menuSummary').onclick = () => { closeSidebar(); state.ui.adminSection = 'reports'; render(); updateNavActive(); };
-        document.getElementById('menuSettings').onclick = () => { closeSidebar(); state.ui.adminSection = 'settings'; render(); updateNavActive(); };
+        document.getElementById('menuStudentManagement').onclick = () => { closeSidebar(); state.ui.adminSection = 'students'; render(); updateNavActive(); saveData(); };
+        document.getElementById('menuDailyAttendance').onclick = () => { closeSidebar(); state.ui.adminSection = 'attendance'; render(); updateNavActive(); saveData(); };
+        document.getElementById('menuSummary').onclick = () => { closeSidebar(); state.ui.adminSection = 'reports'; render(); updateNavActive(); saveData(); };
+        document.getElementById('menuSettings').onclick = () => { closeSidebar(); state.ui.adminSection = 'settings'; render(); updateNavActive(); saveData(); };
         document.getElementById('menuExitAdmin').onclick = () => { 
             closeSidebar();
             state.ui.currentMode = 'kiosk'; 
             updateNavActive(); 
             render(); 
+            saveData();
             showToast('Exited Admin Panel', 'primary'); 
         };
         document.getElementById('themeToggleBtn').onclick = () => { toggleTheme(); closeSidebar(); };
