@@ -179,6 +179,35 @@ END $$;
 
 
 -- ============================================================================
+-- STEP 6: Enable Realtime for Students and Attendance Tables
+-- ============================================================================
+-- This ensures that the Admin dashboard updates automatically when students
+-- check in or out without requiring a page refresh!
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' 
+    AND schemaname = 'public' 
+    AND tablename = 'attendance'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.attendance;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' 
+    AND schemaname = 'public' 
+    AND tablename = 'students'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.students;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'Could not enable Realtime for tables: %', SQLERRM;
+END $$;
+
+
+-- ============================================================================
 -- VERIFICATION QUERIES (uncomment to run after applying)
 -- ============================================================================
 -- SELECT extname, extversion FROM pg_extension WHERE extname IN ('pg_net', 'pg_cron');
@@ -186,3 +215,5 @@ END $$;
 -- SELECT * FROM information_schema.tables WHERE table_name = 'daily_groups';
 -- SELECT * FROM information_schema.columns WHERE table_name = 'students' AND column_name = 'is_active';
 -- SELECT jobid, jobname, schedule, command FROM cron.job WHERE jobname = 'staggered-signout-job';
+-- SELECT * FROM pg_publication_tables WHERE pubname = 'supabase_realtime';
+
