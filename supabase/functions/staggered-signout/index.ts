@@ -6,7 +6,7 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-auto-signout-secret',
 }
 
-serve(async (req) => {
+serve(async (req: Request) => {
   // Handle CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders })
@@ -41,6 +41,7 @@ serve(async (req) => {
     const nowUtc = new Date()
     const localNow = new Date(nowUtc.getTime() + (1 * 60 * 60 * 1000)) // UTC -> WAT (UTC+1)
     const today = localNow.toISOString().split('T')[0] // WAT date, not UTC
+    const isFriday = localNow.getDay() === 5 // 0 = Sun, 5 = Fri, 6 = Sat
     console.log(`[${nowUtc.toISOString()}] Starting staggered sign-out process for date: ${today} (WAT)`)
 
     // 4. Get Config
@@ -56,7 +57,10 @@ serve(async (req) => {
     }
 
     const config = settings.value || {}
-    const schoolClosingTime = config.school_closing_time || '15:30'
+    let schoolClosingTime = config.school_closing_time || '15:30'
+    if (isFriday) {
+      schoolClosingTime = '14:00' // Friday closing time is 2:00 PM WAT
+    }
     const groupSize = config.dismissal_group_size || 20
     const intervalMinutes = config.dismissal_interval_minutes || 1
 
@@ -130,7 +134,7 @@ serve(async (req) => {
     }
 
     // 7. Get Group Indices for Active Students
-    const studentIds = attendance.map(a => a.student_id)
+    const studentIds = attendance.map((a: any) => a.student_id)
     const { data: studentGroups, error: sgError } = await supabase
       .from('daily_groups')
       .select('student_id, group_index')
@@ -139,7 +143,7 @@ serve(async (req) => {
 
     if (sgError) throw sgError
 
-    const groupMap = new Map(studentGroups.map(sg => [sg.student_id, sg.group_index]))
+    const groupMap = new Map<string, number>((studentGroups || []).map((sg: any) => [sg.student_id, sg.group_index]))
 
     // 8. Calculate Thresholds
     // Convert School Closing Time (WAT, UTC+1) to UTC Reference
@@ -187,6 +191,6 @@ serve(async (req) => {
 
   } catch (err) {
     console.error("Function Error:", err)
-    return new Response(JSON.stringify({ error: err.message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } })
+    return new Response(JSON.stringify({ error: (err as any).message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } })
   }
 })
