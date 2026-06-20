@@ -35,11 +35,9 @@
         if (typeof supabase !== 'undefined') {
             supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
                 auth: {
-                    lock: {
-                        acquire: async () => ({
-                            release: async () => {},
-                        }),
-                    },
+                    lock: async (name, acquireTimeout, fn) => {
+                        return await fn();
+                    }
                 },
             });
         } else {
@@ -1088,11 +1086,9 @@
                 smsClient = supabase.createClient(smsUrl, smsAnonKey, {
                     auth: {
                         persistSession: false,
-                        lock: {
-                            acquire: async () => ({
-                                release: async () => {},
-                            }),
-                        },
+                        lock: async (name, acquireTimeout, fn) => {
+                            return await fn();
+                        }
                     }
                 });
             }
