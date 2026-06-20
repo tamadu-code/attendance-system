@@ -2,11 +2,16 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 serve(async (req) => {
-  // 1. Authenticate via Bearer Token
+  // 1. Authenticate via Bearer Token (accept either expectedToken or service role key)
   const authHeader = req.headers.get('Authorization')
   const expectedToken = Deno.env.get('EXPECTED_TOKEN')
+  const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 
-  if (!authHeader || authHeader !== `Bearer ${expectedToken}`) {
+  const isAuthorized = 
+    (expectedToken && authHeader === `Bearer ${expectedToken}`) ||
+    (supabaseServiceRoleKey && authHeader === `Bearer ${supabaseServiceRoleKey}`)
+
+  if (!authHeader || !isAuthorized) {
     return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
       status: 401, 
       headers: { "Content-Type": "application/json" } 
@@ -48,7 +53,6 @@ serve(async (req) => {
 
   // 4. Initialize Supabase Client
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
-  const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 
   try {
