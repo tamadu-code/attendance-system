@@ -1,7 +1,28 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+}
+
+function jsonResponse(data: any, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      ...corsHeaders,
+      "Content-Type": "application/json"
+    }
+  })
+}
+
 serve(async (req) => {
+  // Handle CORS preflight requests
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders })
+  }
+
   // 1. Authenticate via Bearer Token (accept either expectedToken or service role key)
   const authHeader = req.headers.get('Authorization')
   const expectedToken = Deno.env.get('EXPECTED_TOKEN')
@@ -12,10 +33,7 @@ serve(async (req) => {
     (supabaseServiceRoleKey && authHeader === `Bearer ${supabaseServiceRoleKey}`)
 
   if (!authHeader || !isAuthorized) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { 
-      status: 401, 
-      headers: { "Content-Type": "application/json" } 
-    })
+    return jsonResponse({ error: 'Unauthorized' }, 401)
   }
 
   // 2. Parse Request Body
@@ -28,25 +46,16 @@ serve(async (req) => {
     role = body.role
     tenantId = body.tenant_id
   } catch (e) {
-    return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { 
-      status: 400, 
-      headers: { "Content-Type": "application/json" } 
-    })
+    return jsonResponse({ error: 'Invalid JSON body' }, 400)
   }
 
   // 3. Validation
   if (!email || !role) {
-    return new Response(JSON.stringify({ error: 'Missing email or role' }), { 
-      status: 400, 
-      headers: { "Content-Type": "application/json" } 
-    })
+    return jsonResponse({ error: 'Missing email or role' }, 400)
   }
 
   if (role !== 'Teacher' && role !== 'Admin') {
-    return new Response(JSON.stringify({ error: 'Role must be either "Teacher" or "Admin"' }), { 
-      status: 400, 
-      headers: { "Content-Type": "application/json" } 
-    })
+    return jsonResponse({ error: 'Role must be either "Teacher" or "Admin"' }, 400)
   }
 
   const tenantIdVal = tenantId || '00000000-0000-0000-0000-000000000001';
@@ -67,10 +76,7 @@ serve(async (req) => {
       .maybeSingle();
 
     if (profileGetError) {
-      return new Response(JSON.stringify({ error: 'Database error searching profiles: ' + profileGetError.message }), { 
-        status: 500, 
-        headers: { "Content-Type": "application/json" } 
-      })
+      return jsonResponse({ error: 'Database error searching profiles: ' + profileGetError.message }, 500)
     }
 
     if (profile) {
@@ -79,10 +85,7 @@ serve(async (req) => {
       // Check auth.users directly by listing users (in case profile doesn't exist but auth does)
       const { data: { users }, error: listError } = await supabase.auth.admin.listUsers();
       if (listError) {
-        return new Response(JSON.stringify({ error: 'Auth API error listing users: ' + listError.message }), { 
-          status: 500, 
-          headers: { "Content-Type": "application/json" } 
-        })
+        return jsonResponse({ error: 'Auth API error listing users: ' + listError.message }, 500)
       }
       
       const matched = users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
@@ -101,10 +104,7 @@ serve(async (req) => {
 
       const { error: updateError } = await supabase.auth.admin.updateUserById(userId, updateData);
       if (updateError) {
-        return new Response(JSON.stringify({ error: 'Auth API error updating user: ' + updateError.message }), { 
-          status: 500, 
-          headers: { "Content-Type": "application/json" } 
-        })
+        return jsonResponse({ error: 'Auth API error updating user: ' + updateError.message }, 500)
       }
     } else {
       // User does not exist, create auth user
@@ -123,10 +123,7 @@ serve(async (req) => {
 
       const { data: createResult, error: createError } = await supabase.auth.admin.createUser(createData);
       if (createError) {
-        return new Response(JSON.stringify({ error: 'Auth API error creating user: ' + createError.message }), { 
-          status: 500, 
-          headers: { "Content-Type": "application/json" } 
-        })
+        return jsonResponse({ error: 'Auth API error creating user: ' + createError.message }, 500)
       }
       
       userId = createResult.user.id;
@@ -145,21 +142,12 @@ serve(async (req) => {
       });
 
     if (upsertError) {
-      return new Response(JSON.stringify({ error: 'Database error upserting profile: ' + upsertError.message }), { 
-        status: 500, 
-        headers: { "Content-Type": "application/json" } 
-      })
+      return jsonResponse({ error: 'Database error upserting profile: ' + upsertError.message }, 500)
     }
 
-    return new Response(JSON.stringify({ id: userId, email, role, status }), { 
-      status: status === 'created' ? 201 : 200, 
-      headers: { "Content-Type": "application/json" } 
-    })
+    return jsonResponse({ id: userId, email, role, status }, status === 'created' ? 201 : 200)
 
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message || 'Internal server error' }), { 
-      status: 500, 
-      headers: { "Content-Type": "application/json" } 
-    })
+    return jsonResponse({ error: err.message || 'Internal server error' }, 500)
   }
 })

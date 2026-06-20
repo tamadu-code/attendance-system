@@ -33,7 +33,15 @@
         // Safe initialization
         let supabaseClient = null;
         if (typeof supabase !== 'undefined') {
-            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+            supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+                auth: {
+                    lock: {
+                        acquire: async () => ({
+                            release: async () => {},
+                        }),
+                    },
+                },
+            });
         } else {
             console.error("Supabase library not loaded. Offline mode active.");
         }
@@ -1056,17 +1064,109 @@
     // --- Login Action ---
     window.handleLogin = async (e) => {
         e.preventDefault();
-        const email = document.getElementById('loginEmail').value;
+        const email = document.getElementById('loginEmail').value.trim();
         const password = document.getElementById('loginPassword').value;
         const submitBtn = document.getElementById('loginSubmitBtn');
         submitBtn.disabled = true;
         submitBtn.textContent = 'Authenticating...';
+        
         try {
-            const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
-            if (error) throw error;
-            showToast('Authenticated successfully', 'success');
+            const { error: primaryError } = await supabaseClient.auth.signInWithPassword({ email, password });
+            if (!primaryError) {
+                showToast('Authenticated successfully', 'success');
+                return;
+            }
+            
+            console.log("Primary login failed, attempting SMS credentials fallback...", primaryError.message);
+            
+            // Attempt login against the SMS Supabase instance
+            const smsUrl = 'https://urqygjltionvaxuacfzr.supabase.co';
+            const smsAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVycXlnamx0aW9udmF4dWFjZnpyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcwMzEzMDEsImV4cCI6MjA5MjYwNzMwMX0.Vpk7rifsfjMCVBSYpEdVzkHv3w324iKp8B7urlKc_e4';
+            
+            let smsClient = null;
+            if (typeof supabase !== 'undefined') {
+                smsClient = supabase.createClient(smsUrl, smsAnonKey, {
+                    auth: {
+                        persistSession: false,
+                        lock: {
+                            acquire: async () => ({
+                                release: async () => {},
+                            }),
+                        },
+                    }
+                });
+            }
+            
+            if (!smsClient) {
+                throw primaryError;
+            }
+            
+            submitBtn.textContent = 'Verifying with SMS...';
+            const { data: smsData, error: smsError } = await smsClient.auth.signInWithPassword({ email, password });
+            
+            if (smsError) {
+                console.error("SMS fallback authentication failed:", smsError.message);
+                throw primaryError; // Throw the original error (e.g. invalid credentials)
+            }
+            
+            console.log("SMS authenticated successfully. Syncing user profile and password...");
+            submitBtn.textContent = 'Syncing account...';
+            
+            // Fetch profile role and details from SMS database to ensure we sync it correctly
+            let smsProfile = null;
+            try {
+                const { data } = await smsClient
+                    .from('profiles')
+                    .select('role, full_name, tenant_id')
+                    .eq('id', smsData.user.id)
+                    .maybeSingle();
+                smsProfile = data;
+            } catch (err) {
+                console.warn("Failed to fetch profile from SMS database:", err);
+            }
+            
+            let role = 'Teacher';
+            if (smsProfile) {
+                if (smsProfile.role === 'Admin' || smsProfile.role === 'SuperAdmin') {
+                    role = 'Admin';
+                }
+            }
+            
+            // Sync password/profile via Attendance create-user Edge Function
+            const syncUrl = `${SUPABASE_URL}/functions/v1/create-user`;
+            const secretToken = 'Tam360Du180';
+            
+            const response = await fetch(syncUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${secretToken}`
+                },
+                body: JSON.stringify({
+                    email: email,
+                    password: password,
+                    full_name: smsProfile ? smsProfile.full_name : (smsData.user.user_metadata?.full_name || ''),
+                    role: role,
+                    tenant_id: smsProfile ? smsProfile.tenant_id : null
+                })
+            });
+            
+            if (!response.ok) {
+                const errBody = await response.json().catch(() => ({}));
+                console.error("Credentials sync Edge Function failed:", errBody);
+                throw new Error(errBody.error || 'Failed to synchronize account credentials');
+            }
+            
+            console.log("Account synced successfully. Retrying primary login...");
+            submitBtn.textContent = 'Logging in...';
+            
+            // Retry the authentication on Attendance Supabase
+            const { error: retryError } = await supabaseClient.auth.signInWithPassword({ email, password });
+            if (retryError) throw retryError;
+            
+            showToast('Authenticated and synchronized successfully!', 'success');
         } catch (error) {
-            showToast(error.message, 'danger');
+            showToast(error.message || 'Authentication failed', 'danger');
         } finally {
             submitBtn.disabled = false;
             submitBtn.textContent = 'Sign In';
@@ -3068,15 +3168,27 @@
     };
 
 
+    // Robust logout function that bypasses lock hangs
+    async function performLogout() {
+        localStorage.removeItem('tenant_id');
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+            const key = localStorage.key(i);
+            if (key && (key.startsWith(STORAGE_KEY) || key.startsWith('sb-') || key === 'supabase.gotrue-js.locks')) {
+                localStorage.removeItem(key);
+            }
+        }
+        
+        if (supabaseClient) {
+            supabaseClient.auth.signOut().catch(err => console.error("SignOut failed:", err));
+        }
+        
+        window.location.reload();
+    }
+
     // Global Header Logout Function
     window.handleHeaderLogout = async () => {
         if (confirm('Are you sure you want to log out?')) {
-            localStorage.removeItem(getStorageKey());
-            localStorage.removeItem('tenant_id');
-            if (supabaseClient) {
-                await supabaseClient.auth.signOut();
-            }
-            window.location.reload();
+            await performLogout();
         }
     };
 
@@ -3124,10 +3236,7 @@
         document.getElementById('menuLogout').onclick = async () => {
             closeSidebar();
             if (confirm('Are you sure you want to log out?')) {
-                localStorage.removeItem(getStorageKey());
-                localStorage.removeItem('tenant_id');
-                await supabaseClient.auth.signOut();
-                window.location.reload();
+                await performLogout();
             }
         };
 
