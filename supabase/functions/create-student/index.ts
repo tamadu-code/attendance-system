@@ -14,11 +14,12 @@ serve(async (req) => {
   }
 
   // 2. Parse Request Body
-  let name, studentClass;
+  let name, studentClass, tenantId;
   try {
     const body = await req.json()
     name = body.name
     studentClass = body.class
+    tenantId = body.tenant_id
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { 
       status: 400, 
@@ -33,12 +34,14 @@ serve(async (req) => {
     })
   }
 
+  const tenantIdVal = tenantId || '00000000-0000-0000-0000-000000000001';
+
   // 3. Initialize Supabase Client
   const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? ''
   const supabaseServiceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
   const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 
-  // 4. Generate Unique 4-digit code
+  // 4. Generate Unique 4-digit code (scoped to tenant)
   let code: number = 0;
   let attempts = 0;
   const maxAttempts = 100;
@@ -49,6 +52,7 @@ serve(async (req) => {
       .from('students')
       .select('code')
       .eq('code', code)
+      .eq('tenant_id', tenantIdVal)
       .maybeSingle();
 
     if (error) {
@@ -59,7 +63,7 @@ serve(async (req) => {
     }
 
     if (!data) {
-      // Code is unique
+      // Code is unique within this tenant
       break;
     }
     attempts++;
@@ -76,7 +80,7 @@ serve(async (req) => {
   const { error: insertError } = await supabase
     .from('students')
     .insert([
-      { code, name, class: studentClass, is_active: true }
+      { code, name, class: studentClass, is_active: true, tenant_id: tenantIdVal }
     ])
 
   if (insertError) {

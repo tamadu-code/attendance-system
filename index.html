@@ -746,11 +746,82 @@
             .logo-area h1 { -webkit-text-fill-color: black; font-size: 1.5rem; margin-bottom: 10px; }
             small { color: #666 !important; }
         }
+
+        /* --- Login Overlay --- */
+        .login-overlay {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 5000;
+            padding: 20px;
+        }
+        .login-card {
+            background: rgba(30, 41, 59, 0.45);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--radius-lg);
+            padding: 40px 30px;
+            max-width: 420px;
+            width: 100%;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+            text-align: center;
+            animation: fadeIn 0.6s ease-out;
+        }
+        .login-card h2 {
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--text-main) 0%, var(--primary) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .login-card p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        .form-group label {
+            display: block;
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
     </style>
 </head>
 <body>
     <!-- Toast Container -->
     <div id="toast-container"></div>
+
+    <!-- Login Overlay -->
+    <div id="loginOverlay" class="login-overlay">
+        <div class="login-card">
+            <h2>School Attendance</h2>
+            <p>Please authenticate to access your school's attendance kiosk.</p>
+            <form id="loginForm" onsubmit="window.handleLogin(event)">
+                <div class="form-group">
+                    <label for="loginEmail">Email Address</label>
+                    <input type="email" id="loginEmail" class="search-input" style="width: 100%;" required placeholder="name@school.edu">
+                </div>
+                <div class="form-group">
+                    <label for="loginPassword">Password</label>
+                    <input type="password" id="loginPassword" class="search-input" style="width: 100%;" required placeholder="••••••••">
+                </div>
+                <button type="submit" id="loginSubmitBtn" class="btn btn-success" style="width: 100%; margin-top: 10px;">Sign In</button>
+            </form>
+        </div>
+    </div>
 
     <!-- Student Detail/QR Modal -->
     <div id="studentModal" class="modal-overlay" onclick="closeModal()">
@@ -792,6 +863,8 @@
             </div>
             <div class="mode-switch" style="display: flex; gap: 4px; align-items: center;">
                 <button id="kioskModeBtn" class="mode-btn active"><span>🔑</span> Kiosk</button>
+                <button id="adminModeBtn" class="mode-btn" style="display: none;"><span>🛡️</span> Admin</button>
+                <button id="headerLogoutBtn" onclick="window.handleHeaderLogout()" class="mode-btn" style="padding: 8px 12px; border: none; background: transparent; display: none;" title="Logout">🔒 Logout</button>
                 <button onclick="toggleTheme()" class="mode-btn" style="padding: 8px 12px; border: none; background: transparent;" title="Switch Theme">🌓</button>
             </div>
         </div>
@@ -845,6 +918,7 @@
             <div id="themeToggleBtn" class="sidebar-menu-item"><span>🌓</span> Switch Theme</div>
             <hr style="border: 0; border-top: 1px solid rgba(255,255,255,0.1); margin: 12px 0;">
             <div id="menuExitAdmin" class="sidebar-menu-item"><span>🚪</span> Exit Admin Panel</div>
+            <div id="menuLogout" class="sidebar-menu-item" style="color: #ef4444"><span>🔒</span> Logout</div>
         </div>
     </div>
 
@@ -855,6 +929,9 @@
     const ADMIN_CODE_6 = '000000';
     
     let state = {
+        tenantId: localStorage.getItem('tenant_id') || null,
+        session: null,
+        profile: null,
         students: [],
         attendance: {},
         pendingSync: [],
@@ -888,9 +965,37 @@
             summarySortDir: 'asc',
             summaryFilterClass: 'all',
             summaryMonth: new Date().toISOString().slice(0, 7)
-
         }
     };
+
+    function getStorageKey() {
+        return `${STORAGE_KEY}_${state.tenantId || 'anonymous'}`;
+    }
+
+    function saveToLocalStorage() {
+        try {
+            const storageKey = getStorageKey();
+            if (state.isDemo && localStorage.getItem(storageKey)) {
+                console.log("Skipping localStorage save: App is in demo mode and previous data exists.");
+                return;
+            }
+            const sanitizedState = {
+                students: state.students,
+                attendance: state.attendance,
+                config: state.config,
+                pendingSync: state.pendingSync,
+                ui: {
+                    theme: state.ui.theme,
+                    lastSync: state.ui.lastSync,
+                    currentMode: state.ui.currentMode,
+                    adminSection: state.ui.adminSection
+                }
+            };
+            localStorage.setItem(storageKey, JSON.stringify(sanitizedState));
+        } catch (e) {
+            console.error("Failed to save sanitized state to localStorage:", e);
+        }
+    }
 
 
 
@@ -948,34 +1053,129 @@
         saveData();
     }
 
+    // --- Login Action ---
+    window.handleLogin = async (e) => {
+        e.preventDefault();
+        const email = document.getElementById('loginEmail').value;
+        const password = document.getElementById('loginPassword').value;
+        const submitBtn = document.getElementById('loginSubmitBtn');
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Authenticating...';
+        try {
+            const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+            if (error) throw error;
+            showToast('Authenticated successfully', 'success');
+        } catch (error) {
+            showToast(error.message, 'danger');
+        } finally {
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Sign In';
+        }
+    };
+
     // --- Core Functions ---
     async function init() {
-        loadData();
         startClock();
         setupEventListeners();
-        render();
-        updateNavActive(); // Restore hamburger & mode-switch visibility on refresh
-        
-        // If restoring into admin mode, load historical data for summary/reports
-        if (state.ui.currentMode === 'admin') {
-            fetchAllAttendance();
-        }
-        
-        // Connect to Cloud (real-time sync)
-        await syncAllData();
-        
         document.documentElement.classList.toggle('light-theme', state.ui.theme === 'light');
+
+        if (!supabaseClient) {
+            loadData();
+            render();
+            updateNavActive();
+            return;
+        }
+
+        // Listen to Auth State changes
+        supabaseClient.auth.onAuthStateChange(async (event, session) => {
+            console.log("Auth Event:", event);
+            state.session = session;
+            if (session) {
+                let tenantId = null;
+                let role = null;
+                
+                try {
+                    const { data: profile } = await supabaseClient
+                        .from('profiles')
+                        .select('tenant_id, role, full_name')
+                        .eq('id', session.user.id)
+                        .single();
+                    if (profile) {
+                        state.profile = profile;
+                        tenantId = profile.tenant_id;
+                        role = profile.role;
+                    }
+                } catch (err) {
+                    console.error("Profile fetch failed:", err);
+                }
+
+                if (!tenantId) {
+                    try {
+                        const payload = JSON.parse(atob(session.access_token.split('.')[1]));
+                        tenantId = payload.tenant_id;
+                        role = payload.user_role;
+                    } catch (e) {
+                        console.error("Failed to decode JWT claims:", e);
+                    }
+                }
+
+                if (tenantId) {
+                    state.tenantId = tenantId;
+                    localStorage.setItem('tenant_id', tenantId);
+
+                    try {
+                        const { data: tenantInfo } = await supabaseClient
+                            .from('tenants')
+                            .select('name')
+                            .eq('id', tenantId)
+                            .single();
+                        if (tenantInfo) {
+                            state.config.schoolName = tenantInfo.name;
+                        }
+                    } catch (err) {
+                        console.warn("Could not fetch tenant name:", err);
+                    }
+                }
+
+                if (role) {
+                    state.profileRole = role;
+                }
+
+                document.getElementById('loginOverlay').style.display = 'none';
+
+                loadData();
+                if (state.profileRole === 'Teacher') {
+                    state.ui.currentMode = 'kiosk';
+                }
+                render();
+                updateNavActive();
+
+                if (state.ui.currentMode === 'admin') {
+                    fetchAllAttendance();
+                }
+
+                await syncAllData();
+            } else {
+                state.session = null;
+                state.tenantId = null;
+                state.profileRole = null;
+                localStorage.removeItem('tenant_id');
+                document.getElementById('loginOverlay').style.display = 'flex';
+                render();
+            }
+        });
 
         // Silent background polling refresh every 2 seconds when in admin mode
         setInterval(async () => {
-            if (state.ui.currentMode === 'admin' && navigator.onLine && supabaseClient) {
+            if (state.ui.currentMode === 'admin' && navigator.onLine && supabaseClient && state.session) {
                 await refreshAttendance();
             }
         }, 2000);
     }
 
     function loadData() {
-        const saved = localStorage.getItem(STORAGE_KEY);
+        const storageKey = getStorageKey();
+        const saved = localStorage.getItem(storageKey);
         if (saved) {
             try {
                 const data = JSON.parse(saved);
@@ -988,16 +1188,21 @@
                 state.ui.currentMode = data.ui?.currentMode || 'kiosk';
                 state.ui.adminSection = data.ui?.adminSection || 'students';
                 
-                // If we have students, we are no longer in "demo" mode
                 if (state.students.length > 0) {
-                    console.log("Loaded cached data for", state.students.length, "students");
+                    console.log("Loaded cached data for tenant", state.tenantId, "-", state.students.length, "students");
                 }
             } catch (e) {
                 console.error("Error parsing local storage:", e);
                 initDemoData();
             }
         } else {
-            initDemoData();
+            if (!state.session) {
+                initDemoData();
+            } else {
+                state.isDemo = false;
+                state.students = [];
+                state.attendance = {};
+            }
         }
         updateCutoffDisplay();
         sortStudents();
@@ -1019,18 +1224,14 @@
 
     // --- Persistence (Supabase + Local Backup) ---
     async function saveData() {
-        // Prevent saving demo data back to local storage if we already have real data
-        if (state.isDemo && localStorage.getItem(STORAGE_KEY)) {
-            console.log("Skipping localStorage save: App is in demo mode and previous data exists.");
-        } else {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-        }
+        saveToLocalStorage();
         
-        if (!navigator.onLine || !supabaseClient) return;
+        if (!navigator.onLine || !supabaseClient || !state.tenantId) return;
 
         try {
             // 1. Sync Settings (Theme/Cutoff)
             const { error } = await supabaseClient.from('settings').upsert({ 
+                tenant_id: state.tenantId,
                 key: 'config', 
                 value: state.config
             });
@@ -1043,9 +1244,10 @@
     }
 
     async function syncStudentsToCloud() {
-        if (state.students.length === 0) return;
+        if (state.students.length === 0 || !state.tenantId) return;
         const studentData = state.students.map(s => ({
             id: s.id,
+            tenant_id: state.tenantId,
             name: s.name,
             class: s.class,
             code: s.code
@@ -1074,7 +1276,7 @@
     }
 
     async function tryPushPending() {
-        if (!navigator.onLine || !supabaseClient || !state.pendingSync || state.pendingSync.length === 0) {
+        if (!navigator.onLine || !supabaseClient || !state.pendingSync || state.pendingSync.length === 0 || !state.tenantId) {
             updateSyncIndicator();
             return;
         }
@@ -1099,6 +1301,7 @@
             const { data: cloudRecords, error: fetchError } = await supabaseClient
                 .from('attendance')
                 .select('*')
+                .eq('tenant_id', state.tenantId)
                 .in('date', dates);
                 
             if (fetchError) throw fetchError;
@@ -1107,6 +1310,7 @@
             const mergedRecords = uniqueItems.map(item => {
                 const cloudRecord = cloudRecords ? cloudRecords.find(r => r.student_id === item.studentId && r.date === item.date) : null;
                 return {
+                    tenant_id: state.tenantId,
                     student_id: item.studentId,
                     date: item.date,
                     // Keep the EARLIEST Sign-In time
@@ -1119,7 +1323,11 @@
                         ? (item.record.out > cloudRecord.sign_out ? item.record.out : cloudRecord.sign_out)
                         : (item.record.out || (cloudRecord ? cloudRecord.sign_out : null)),
 
-                    is_late: (cloudRecord && cloudRecord.is_late) || item.record.late || false
+                    is_late: (cloudRecord && cloudRecord.is_late) || item.record.late || false,
+                    
+                    // Audit columns
+                    signed_in_by: item.record.signed_in_by || (cloudRecord ? cloudRecord.signed_in_by : null),
+                    signed_out_by: item.record.signed_out_by || (cloudRecord ? cloudRecord.signed_out_by : null)
                 };
             });
 
@@ -1169,7 +1377,7 @@
     }
 
     async function syncAllData() {
-        if (!navigator.onLine || !supabaseClient) {
+        if (!navigator.onLine || !supabaseClient || !state.tenantId) {
             updateSyncIndicator();
             if (!navigator.onLine) {
                 console.log("Offline mode: Using cached data.");
@@ -1190,11 +1398,12 @@
             const { data: studentList, error: studentError } = await supabaseClient
                 .from('students')
                 .select('*')
+                .eq('tenant_id', state.tenantId)
                 .eq('is_active', true); // Only fetch active students
             
             if (studentError) throw studentError;
 
-            if (studentList && studentList.length > 0) {
+            if (studentList) {
                 state.isDemo = false; // Real data received!
                 state.students = studentList.map(s => ({
                     id: s.id,
@@ -1209,7 +1418,8 @@
             const today = new Date().toISOString().split('T')[0];
             const { data: attendanceList, error: attError } = await supabaseClient
                 .from('attendance')
-                .select('*')
+                .select('*, profiles:signed_in_by(full_name)')
+                .eq('tenant_id', state.tenantId)
                 .eq('date', today);
             
             if (attError) throw attError;
@@ -1217,7 +1427,14 @@
             if (attendanceList) {
                 state.attendance[today] = {};
                 attendanceList.forEach(a => {
-                    state.attendance[today][a.student_id] = { in: a.sign_in, out: a.sign_out, late: a.is_late };
+                    state.attendance[today][a.student_id] = { 
+                        in: a.sign_in, 
+                        out: a.sign_out, 
+                        late: a.is_late,
+                        signed_in_by: a.signed_in_by,
+                        signed_in_by_name: a.profiles?.full_name || null,
+                        signed_out_by: a.signed_out_by
+                    };
                 });
             }
 
@@ -1225,8 +1442,9 @@
             const { data: settingsData } = await supabaseClient
                 .from('settings')
                 .select('value')
+                .eq('tenant_id', state.tenantId)
                 .eq('key', 'config')
-                .single();
+                .maybeSingle();
                 
             if (settingsData && state.ui.adminSection !== 'settings') {
                 state.config = { ...state.config, ...settingsData.value };
@@ -1237,9 +1455,10 @@
             state.ui.lastSync = Date.now();
 
             // CRITICAL: Save fetched cloud data to local storage for offline use
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            saveToLocalStorage();
 
             render();
+            updateNavActive();
             updateSyncIndicator('online');
 
             // 4. Real-time Subscriptions (Optional: Re-connect if needed)
@@ -1253,15 +1472,16 @@
     }
 
     function setupSubscriptions() {
+        if (!state.tenantId) return;
         // Clear existing if any (Supabase handles some of this, but good to be safe)
         supabaseClient.removeAllChannels();
 
         supabaseClient.channel('custom-all-channel')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, payload => {
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'students', filter: `tenant_id=eq.${state.tenantId}` }, payload => {
                 console.log("Real-time update: Students changed");
                 refreshStudents();
             })
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance' }, payload => {
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'attendance', filter: `tenant_id=eq.${state.tenantId}` }, payload => {
                 console.log("Real-time update: Attendance changed");
                 refreshAttendance();
             })
@@ -1269,11 +1489,17 @@
     }
 
     async function refreshStudents() {
-        const { data } = await supabaseClient.from('students').select('*');
+        if (!state.tenantId) return;
+        const { data } = await supabaseClient.from('students').select('*').eq('tenant_id', state.tenantId).eq('is_active', true);
         if (data) {
-            state.students = data;
+            state.students = data.map(s => ({
+                id: s.id,
+                name: s.name,
+                class: s.class,
+                code: s.code
+            }));
             sortStudents();
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            saveToLocalStorage();
             if (state.ui.currentMode === 'admin') {
                 updateAdminDashboardSilently();
             } else {
@@ -1360,19 +1586,31 @@
     }
 
     async function fetchAttendanceForDate(date) {
+        if (!state.tenantId) return;
         try {
             console.log("Fetching attendance for date:", date);
-            const { data, error } = await supabaseClient.from('attendance').select('*').eq('date', date);
+            const { data, error } = await supabaseClient
+                .from('attendance')
+                .select('*, profiles:signed_in_by(full_name)')
+                .eq('tenant_id', state.tenantId)
+                .eq('date', date);
             
             if (error) throw error;
 
             state.attendance[date] = {};
             if (data && data.length > 0) {
                 data.forEach(a => {
-                    state.attendance[date][a.student_id] = { in: a.sign_in, out: a.sign_out, late: a.is_late };
+                    state.attendance[date][a.student_id] = { 
+                        in: a.sign_in, 
+                        out: a.sign_out, 
+                        late: a.is_late,
+                        signed_in_by: a.signed_in_by,
+                        signed_in_by_name: a.profiles?.full_name || null,
+                        signed_out_by: a.signed_out_by
+                    };
                 });
             }
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            saveToLocalStorage();
             
             if (state.ui.currentMode === 'admin') {
                 updateAdminDashboardSilently();
@@ -1403,7 +1641,7 @@
 
     let lastFetchedMonth = '';
     async function fetchAllAttendance(month = state.ui.summaryMonth) {
-        if (lastFetchedMonth === month) return;
+        if (lastFetchedMonth === month || !state.tenantId) return;
         try {
             const [yyyy, mm] = month.split('-');
             const year = parseInt(yyyy);
@@ -1416,6 +1654,7 @@
 
             const { data } = await supabaseClient.from('attendance')
                 .select('*')
+                .eq('tenant_id', state.tenantId)
                 .gte('date', firstDay)
                 .lte('date', lastDay);
 
@@ -1425,7 +1664,7 @@
                     state.attendance[a.date][a.student_id] = { in: a.sign_in, out: a.sign_out, late: a.is_late };
                 });
                 lastFetchedMonth = month;
-                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+                saveToLocalStorage();
                 render();
             }
         } catch (e) {
@@ -1523,12 +1762,12 @@
     window.downloadDailyCsv = () => {
         const date = state.ui.viewDate;
         const logs = state.attendance[date] || {};
-        let csv = "Student Name,Class,Sign In,Sign Out,Status\n";
+        let csv = "Student Name,Class,Sign In,Signed In By,Sign Out,Status\n";
         
         state.students.forEach(s => {
             const log = logs[s.id] || {};
             const status = log.in ? (log.late ? 'Late' : 'Present') : 'Absent';
-            csv += `"${s.name}","${s.class}","${log.in || ''}","${log.out || ''}","${status}"\n`;
+            csv += `"${s.name}","${s.class}","${log.in || ''}","${log.signed_in_by_name || '—'}","${log.out || ''}","${status}"\n`;
         });
         downloadBlob(csv, `attendance_${date}.csv`);
     };
@@ -1656,6 +1895,10 @@
     }
 
     function enterAdminMode() {
+        if (!state.isDemo && state.profileRole !== 'Admin' && state.profileRole !== 'SuperAdmin') {
+            showToast('Access Denied: You do not have system access privileges', 'danger');
+            return;
+        }
         if (state.ui.adminModeActive) return;
         
         state.ui.adminModeActive = true;
@@ -1702,6 +1945,12 @@
 
     function processAdminCode() {
         if (state.ui.kioskCode === ADMIN_CODE_6) {
+            if (!state.isDemo && state.profileRole !== 'Admin' && state.profileRole !== 'SuperAdmin') {
+                showToast('Access Denied: You do not have system access privileges', 'danger');
+                state.ui.kioskCode = '';
+                updateCodeDisplay();
+                return;
+            }
             exitAdminMode(true);
         } else {
             vibrate(300);
@@ -1775,6 +2024,8 @@
             // Sign In
             record.in = timeStr;
             record.late = timeStr > state.config.lateTime;
+            record.signed_in_by = state.session ? state.session.user.id : null;
+            record.signed_in_by_name = state.profile ? state.profile.full_name : (state.session ? state.session.user.email : null);
             vibrate([100, 50, 100]); // Happy pattern on success
             playBeep('success');
             showToast(`${student.name} signed IN at ${timeStr}${record.late ? ' (LATE)' : ''}`, 'success');
@@ -1796,6 +2047,8 @@
 
             // Sign Out
             record.out = timeStr;
+            record.signed_out_by = state.session ? state.session.user.id : null;
+            record.signed_out_by_name = state.profile ? state.profile.full_name : (state.session ? state.session.user.email : null);
             vibrate([100, 50, 100]); // Happy pattern on success
             playBeep('success');
             showToast(`${student.name} signed OUT at ${timeStr}`, 'success');
@@ -2186,6 +2439,7 @@
                                         <th ${thClick('name')}>Student ${sortIcon('name')}</th>
                                         <th ${thClick('class')}>Class ${sortIcon('class')}</th>
                                         <th ${thClick('in')}>Sign In ${sortIcon('in')}</th>
+                                        <th>Signed In By</th>
                                         <th ${thClick('out')}>Sign Out ${sortIcon('out')}</th>
                                         <th ${thClick('status')}>Status ${sortIcon('status')}</th>
                                     </tr>
@@ -2198,6 +2452,7 @@
                                                 <td data-label="Student">${s.name}</td>
                                                 <td data-label="Class">${s.class}</td>
                                                 <td data-label="Sign In">${log.in || '—'}</td>
+                                                <td data-label="Signed In By" style="font-size: 0.85rem; color: var(--text-muted);">${log.signed_in_by_name || '—'}</td>
                                                 <td data-label="Sign Out">${log.out || '—'}</td>
                                                 <td data-label="Status">
                                                     ${log.in ? 
@@ -2206,7 +2461,7 @@
                                                 </td>
                                             </tr>
                                         `;
-                                    }).join('') : '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);">No students in this class.</td></tr>'}
+                                    }).join('') : '<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-muted);">No students in this class.</td></tr>'}
                                 </tbody>
                             </table>
                         </div>
@@ -2371,10 +2626,11 @@
     };
 
     window.deleteStudent = async (id) => {
+        if (!state.tenantId) return;
         if (confirm('Are you sure you want to delete this student?')) {
             try {
                 // 1. Delete from Cloud
-                await supabaseClient.from('students').delete().eq('id', id);
+                await supabaseClient.from('students').delete().eq('id', id).eq('tenant_id', state.tenantId);
                 
                 // 2. Update Local State
                 state.students = state.students.filter(s => s.id !== id);
@@ -2578,6 +2834,7 @@
         
         const timeStr = new Date().toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' });
         const updates = activeIds.map(id => ({
+            tenant_id: state.tenantId,
             student_id: id,
             date: today,
             sign_in: logs[id].in,
@@ -2672,11 +2929,12 @@
 
     // --- Backup & Restore Logic ---
     window.backupData = async () => {
+        if (!state.tenantId) return;
         try {
             showToast('Preparing full database backup...', 'primary');
             
             // Fetch the ENTIRE attendance history from Supabase to ensure a complete backup
-            const { data, error } = await supabaseClient.from('attendance').select('*');
+            const { data, error } = await supabaseClient.from('attendance').select('*').eq('tenant_id', state.tenantId);
             if (error) throw error;
             
             const fullAttendance = {};
@@ -2792,12 +3050,12 @@
     };
 
     window.downloadCSV = () => {
-        let csv = 'Name,Class,Code,Date,Status,In,Out\n';
+        let csv = 'Name,Class,Code,Date,Status,In,Signed In By,Out\n';
         Object.keys(state.attendance).forEach(date => {
             state.students.forEach(s => {
                 const log = state.attendance[date][s.id] || {};
                 const status = log.in ? (log.late ? 'Late' : 'Present') : 'Absent';
-                csv += `"${s.name}","${s.class}","${s.code}","${date}","${status}","${log.in || ''}","${log.out || ''}"\n`;
+                csv += `"${s.name}","${s.class}","${s.code}","${date}","${status}","${log.in || ''}","${log.signed_in_by_name || '—'}","${log.out || ''}"\n`;
             });
         });
         
@@ -2810,11 +3068,34 @@
     };
 
 
+    // Global Header Logout Function
+    window.handleHeaderLogout = async () => {
+        if (confirm('Are you sure you want to log out?')) {
+            localStorage.removeItem(getStorageKey());
+            localStorage.removeItem('tenant_id');
+            if (supabaseClient) {
+                await supabaseClient.auth.signOut();
+            }
+            window.location.reload();
+        }
+    };
+
     // --- Navigation Logic ---
     function setupEventListeners() {
         // Mode Switches
         document.getElementById('kioskModeBtn').onclick = () => {
             state.ui.currentMode = 'kiosk';
+            updateNavActive();
+            render();
+            saveData();
+        };
+
+        document.getElementById('adminModeBtn').onclick = () => {
+            if (!state.isDemo && state.profileRole !== 'Admin' && state.profileRole !== 'SuperAdmin') {
+                showToast('Access Denied: You do not have system access privileges', 'danger');
+                return;
+            }
+            state.ui.currentMode = 'admin';
             updateNavActive();
             render();
             saveData();
@@ -2840,6 +3121,15 @@
             showToast('Exited Admin Panel', 'primary'); 
         };
         document.getElementById('themeToggleBtn').onclick = () => { toggleTheme(); closeSidebar(); };
+        document.getElementById('menuLogout').onclick = async () => {
+            closeSidebar();
+            if (confirm('Are you sure you want to log out?')) {
+                localStorage.removeItem(getStorageKey());
+                localStorage.removeItem('tenant_id');
+                await supabaseClient.auth.signOut();
+                window.location.reload();
+            }
+        };
 
         // QR Scanner Implementation
         let html5QrCode = null;
@@ -2902,6 +3192,10 @@
     }
 
     function checkAdmin() {
+        if (!state.isDemo && state.profileRole !== 'Admin' && state.profileRole !== 'SuperAdmin') {
+            showToast('Access Denied: You do not have system access privileges', 'danger');
+            return false;
+        }
         if (state.ui.currentMode !== 'admin') {
             const pass = prompt('Admin password required:');
             if (pass === ADMIN_PASS) {
@@ -2915,13 +3209,38 @@
     }
 
     function updateNavActive() {
+        const isAdminUser = state.profileRole === 'Admin' || state.profileRole === 'SuperAdmin';
+
         // Show/Hide Hamburger based on mode
         const hamburger = document.getElementById('hamburgerBtn');
         if (hamburger) hamburger.style.display = state.ui.currentMode === 'admin' ? 'flex' : 'none';
 
-        // Show/Hide Kiosk Switch based on mode (Only visible in Admin mode to allow switching back)
+        // Show/Hide Kiosk Switch container
         const modeSwitch = document.querySelector('.mode-switch');
-        if (modeSwitch) modeSwitch.style.display = state.ui.currentMode === 'admin' ? 'flex' : 'none';
+        if (modeSwitch) {
+            // Visible if session is active, in demo mode, or local environment without auth configured
+            const showModeSwitch = state.session || state.isDemo || !supabaseClient;
+            modeSwitch.style.display = showModeSwitch ? 'flex' : 'none';
+        }
+
+        // Show/Hide adminModeBtn and toggle active state
+        const adminModeBtn = document.getElementById('adminModeBtn');
+        if (adminModeBtn) {
+            adminModeBtn.style.display = (isAdminUser || state.isDemo) ? 'inline-block' : 'none';
+            adminModeBtn.classList.toggle('active', state.ui.currentMode === 'admin');
+        }
+
+        const kioskModeBtn = document.getElementById('kioskModeBtn');
+        if (kioskModeBtn) {
+            kioskModeBtn.style.display = (isAdminUser || state.isDemo) ? 'inline-block' : 'none';
+            kioskModeBtn.classList.toggle('active', state.ui.currentMode === 'kiosk');
+        }
+
+        // Show/Hide Header Logout Button
+        const headerLogout = document.getElementById('headerLogoutBtn');
+        if (headerLogout) {
+            headerLogout.style.display = state.session ? 'inline-block' : 'none';
+        }
 
         // Remove active class from all sidebar items
         document.querySelectorAll('.sidebar-menu-item').forEach(i => i.classList.remove('active'));

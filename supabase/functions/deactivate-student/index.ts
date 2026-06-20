@@ -14,10 +14,12 @@ serve(async (req) => {
   }
 
   // 2. Parse Request Body
-  let attendanceCode;
+  let attendanceCode, tenantId, studentId;
   try {
     const body = await req.json()
     attendanceCode = body.attendance_code
+    tenantId = body.tenant_id
+    studentId = body.student_id
   } catch (e) {
     return new Response(JSON.stringify({ error: 'Invalid JSON body' }), { 
       status: 400, 
@@ -25,8 +27,8 @@ serve(async (req) => {
     })
   }
 
-  if (attendanceCode === undefined) {
-    return new Response(JSON.stringify({ error: 'Missing attendance_code' }), { 
+  if (!attendanceCode && !studentId) {
+    return new Response(JSON.stringify({ error: 'Missing attendance_code or student_id' }), { 
       status: 400, 
       headers: { "Content-Type": "application/json" } 
     })
@@ -38,11 +40,34 @@ serve(async (req) => {
   const supabase = createClient(supabaseUrl, supabaseServiceRoleKey)
 
   // 4. Update Student (Soft Delete)
-  const { data, error, count } = await supabase
-    .from('students')
-    .update({ is_active: false })
-    .eq('code', attendanceCode)
-    .select()
+  let query = supabase.from('students').update({ is_active: false })
+
+  if (attendanceCode) {
+    const codeStr = String(attendanceCode).trim();
+    if (!/^\d+$/.test(codeStr)) {
+      return new Response(JSON.stringify({ error: 'Invalid attendance_code format' }), { 
+        status: 400, 
+        headers: { "Content-Type": "application/json" } 
+      })
+    }
+    query = query.eq('code', codeStr)
+  } else {
+    // If only studentId is provided, verify it is a valid UUID before querying id
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(studentId);
+    if (!isUuid) {
+      return new Response(JSON.stringify({ error: 'student_id must be a valid UUID' }), { 
+        status: 400, 
+        headers: { "Content-Type": "application/json" } 
+      })
+    }
+    query = query.eq('id', studentId)
+  }
+
+  if (tenantId) {
+    query = query.eq('tenant_id', tenantId)
+  }
+
+  const { data, error } = await query.select()
 
   if (error) {
     return new Response(JSON.stringify({ error: error.message }), { 

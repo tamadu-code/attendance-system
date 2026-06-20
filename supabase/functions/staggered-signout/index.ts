@@ -42,155 +42,182 @@ serve(async (req: Request) => {
     const localNow = new Date(nowUtc.getTime() + (1 * 60 * 60 * 1000)) // UTC -> WAT (UTC+1)
     const today = localNow.toISOString().split('T')[0] // WAT date, not UTC
     const isFriday = localNow.getDay() === 5 // 0 = Sun, 5 = Fri, 6 = Sat
-    console.log(`[${nowUtc.toISOString()}] Starting staggered sign-out process for date: ${today} (WAT)`)
-
-    // 4. Get Config
-    const { data: settings, error: settingsError } = await supabase
-      .from('settings')
-      .select('value')
-      .eq('key', 'config')
-      .single()
-
-    if (settingsError || !settings) {
-      console.error("Settings error:", settingsError)
-      throw new Error('Configuration row "config" not found in "settings" table.')
-    }
-
-    const config = settings.value || {}
-    let schoolClosingTime = config.school_closing_time || '15:30'
-    if (isFriday) {
-      schoolClosingTime = '14:00' // Friday closing time is 2:00 PM WAT
-    }
-    const groupSize = config.dismissal_group_size || 20
-    const intervalMinutes = config.dismissal_interval_minutes || 1
-
-    // 4b. Holiday & Term Closure Safeguards
-    const holidays = config.holidays || []
-    if (holidays.includes(today)) {
-      console.log(`[${today}] Today is a scheduled school holiday. Aborting staggered sign-out.`)
-      return new Response(JSON.stringify({ message: 'Success: Today is a scheduled holiday. No action required.' }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } })
-    }
-
-    if (config.isTermClosed) {
-      console.log(`[${today}] School term is closed. Aborting staggered sign-out.`)
-      return new Response(JSON.stringify({ message: 'Success: School term is closed. No action required.' }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } })
-    }
-
-    console.log(`Config: Closing Time=${schoolClosingTime}, Group Size=${groupSize}, Interval=${intervalMinutes}m`)
-
-    // 5. Manage Daily Groups (Randomize order once per day)
-    const { data: groupsExist, error: groupsError } = await supabase
-      .from('daily_groups')
-      .select('student_id')
-      .eq('date', today)
-      .limit(1)
-
-    if (groupsError) throw groupsError
-
-    if (groupsExist.length === 0) {
-      console.log(`Populating daily_groups for ${today}...`)
-      const { data: activeStudents, error: studentsError } = await supabase
-        .from('students')
-        .select('id')
-        .eq('is_active', true)
-
-      if (studentsError) throw studentsError
-      
-      if (activeStudents && activeStudents.length > 0) {
-        // Robust Shuffle (Fisher-Yates)
-        const shuffled = [...activeStudents]
-        for (let i = shuffled.length - 1; i > 0; i--) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
-        }
-
-        const groupData = shuffled.map((s, index) => ({
-          date: today,
-          student_id: s.id,
-          group_index: Math.floor(index / groupSize)
-        }))
-
-        const { error: insertError } = await supabase.from('daily_groups').insert(groupData)
-        if (insertError) throw insertError
-        console.log(`Created ${groupData.length} group assignments.`)
-      } else {
-        console.log("No active students found to assign to groups.")
-      }
-    }
-
-    // 6. Identify Students to Sign Out
-    const { data: attendance, error: attendanceError } = await supabase
-      .from('attendance')
-      .select('student_id, sign_in, sign_out')
-      .eq('date', today)
-      .not('sign_in', 'is', null)
-      .is('sign_out', null)
-
-    if (attendanceError) throw attendanceError
-    
-    if (!attendance || attendance.length === 0) {
-      console.log("No active students (present but not signed out) found.")
-      return new Response(JSON.stringify({ message: 'Success: No students active to sign out.' }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } })
-    }
-
-    // 7. Get Group Indices for Active Students
-    const studentIds = attendance.map((a: any) => a.student_id)
-    const { data: studentGroups, error: sgError } = await supabase
-      .from('daily_groups')
-      .select('student_id, group_index')
-      .eq('date', today)
-      .in('student_id', studentIds)
-
-    if (sgError) throw sgError
-
-    const groupMap = new Map<string, number>((studentGroups || []).map((sg: any) => [sg.student_id, sg.group_index]))
-
-    // 8. Calculate Thresholds
-    // Convert School Closing Time (WAT, UTC+1) to UTC Reference
-    const [hours, minutes] = schoolClosingTime.split(':').map(Number)
-    const baseTimeUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate(), hours, minutes, 0))
-    const schoolBaseTime = new Date(baseTimeUtc.getTime() - (1 * 60 * 60 * 1000)) // WAT -> UTC adjustment
-    
-    // localNow already computed above (WAT = UTC+1)
     const timeStr = `${String(localNow.getUTCHours()).padStart(2, '0')}:${String(localNow.getUTCMinutes()).padStart(2, '0')}`
+    console.log(`[${nowUtc.toISOString()}] Starting multi-tenant staggered sign-out process for date: ${today} (WAT)`)
 
-    console.log(`Dismissal Window: Base (WAT)=${schoolClosingTime}, Base (UTC)=${schoolBaseTime.toISOString()}. Current (WAT)=${timeStr}`)
+    // 4. Get Configs for all tenants
+    const { data: allSettings, error: settingsError } = await supabase
+      .from('settings')
+      .select('tenant_id, value')
+      .eq('key', 'config')
 
-    // 9. Update Attendance Records
-    let signedOutCount = 0
-    let skippedCount = 0
-
-    for (const record of attendance) {
-      const groupIndex = groupMap.get(record.student_id) ?? 0
-      const scheduledTime = new Date(schoolBaseTime.getTime() + groupIndex * intervalMinutes * 60000)
-
-      if (nowUtc >= scheduledTime) {
-        const { error: updateError } = await supabase
-          .from('attendance')
-          .update({ sign_out: timeStr })
-          .match({ student_id: record.student_id, date: today })
-        
-        if (updateError) {
-          console.error(`Failed to update student ${record.student_id}:`, updateError)
-        } else {
-          signedOutCount++
-        }
-      } else {
-        skippedCount++
-      }
+    if (settingsError || !allSettings) {
+      console.error("Settings error:", settingsError)
+      throw new Error('No configurations found in "settings" table.')
     }
 
-    console.log(`Process Complete: Signed out ${signedOutCount}, Queued ${skippedCount}.`)
+    let totalChecked = 0
+    let totalSignedOut = 0
+    let totalQueued = 0
+    const results = []
+
+    for (const settings of allSettings) {
+      const tenant_id = settings.tenant_id
+      const config = settings.value || {}
+      
+      console.log(`Processing Tenant: ${tenant_id}`)
+
+      let schoolClosingTime = config.school_closing_time || '15:30'
+      if (isFriday) {
+        schoolClosingTime = '14:00' // Friday closing time is 2:00 PM WAT
+      }
+      const groupSize = config.dismissal_group_size || 20
+      const intervalMinutes = config.dismissal_interval_minutes || 1
+
+      // Holiday & Term Closure Safeguards
+      const holidays = config.holidays || []
+      if (holidays.includes(today)) {
+        console.log(`[${today}] Tenant ${tenant_id} has a scheduled school holiday. Skipping.`)
+        continue
+      }
+
+      if (config.isTermClosed) {
+        console.log(`[${today}] Tenant ${tenant_id} term is closed. Skipping.`)
+        continue
+      }
+
+      // 5. Manage Daily Groups (Randomize order once per day per tenant)
+      const { data: groupsExist, error: groupsError } = await supabase
+        .from('daily_groups')
+        .select('student_id')
+        .eq('date', today)
+        .eq('tenant_id', tenant_id)
+        .limit(1)
+
+      if (groupsError) {
+        console.error(`Daily groups check failed for tenant ${tenant_id}:`, groupsError)
+        continue
+      }
+
+      if (groupsExist.length === 0) {
+        console.log(`Populating daily_groups for tenant ${tenant_id}...`)
+        const { data: activeStudents, error: studentsError } = await supabase
+          .from('students')
+          .select('id')
+          .eq('is_active', true)
+          .eq('tenant_id', tenant_id)
+
+        if (studentsError) {
+          console.error(`Active students fetch failed for tenant ${tenant_id}:`, studentsError)
+          continue
+        }
+        
+        if (activeStudents && activeStudents.length > 0) {
+          // Shuffle active students (Fisher-Yates)
+          const shuffled = [...activeStudents]
+          for (let i = shuffled.length - 1; i > 0; i--) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]]
+          }
+
+          const groupData = shuffled.map((s, index) => ({
+            date: today,
+            student_id: s.id,
+            group_index: Math.floor(index / groupSize),
+            tenant_id: tenant_id
+          }))
+
+          const { error: insertError } = await supabase.from('daily_groups').insert(groupData)
+          if (insertError) {
+            console.error(`Failed to insert daily groups for tenant ${tenant_id}:`, insertError)
+            continue
+          }
+          console.log(`Created ${groupData.length} group assignments for tenant ${tenant_id}.`)
+        } else {
+          console.log(`No active students found to assign to groups for tenant ${tenant_id}.`)
+        }
+      }
+
+      // 6. Identify Students to Sign Out
+      const { data: attendance, error: attendanceError } = await supabase
+        .from('attendance')
+        .select('student_id, sign_in, sign_out')
+        .eq('date', today)
+        .eq('tenant_id', tenant_id)
+        .not('sign_in', 'is', null)
+        .is('sign_out', null)
+
+      if (attendanceError) {
+        console.error(`Attendance fetch failed for tenant ${tenant_id}:`, attendanceError)
+        continue
+      }
+      
+      if (!attendance || attendance.length === 0) {
+        console.log(`No active students (present but not signed out) found for tenant ${tenant_id}.`)
+        continue
+      }
+
+      // 7. Get Group Indices for Active Students
+      const studentIds = attendance.map((a: any) => a.student_id)
+      const { data: studentGroups, error: sgError } = await supabase
+        .from('daily_groups')
+        .select('student_id, group_index')
+        .eq('date', today)
+        .eq('tenant_id', tenant_id)
+        .in('student_id', studentIds)
+
+      if (sgError) {
+        console.error(`Group index fetch failed for tenant ${tenant_id}:`, sgError)
+        continue
+      }
+
+      const groupMap = new Map<string, number>((studentGroups || []).map((sg: any) => [sg.student_id, sg.group_index]))
+
+      // 8. Calculate Thresholds
+      const [hours, minutes] = schoolClosingTime.split(':').map(Number)
+      const baseTimeUtc = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth(), nowUtc.getUTCDate(), hours, minutes, 0))
+      const schoolBaseTime = new Date(baseTimeUtc.getTime() - (1 * 60 * 60 * 1000)) // WAT -> UTC adjustment
+
+      let signedOutCount = 0
+      let skippedCount = 0
+
+      for (const record of attendance) {
+        const groupIndex = groupMap.get(record.student_id) ?? 0
+        const scheduledTime = new Date(schoolBaseTime.getTime() + groupIndex * intervalMinutes * 60000)
+
+        if (nowUtc >= scheduledTime) {
+          const { error: updateError } = await supabase
+            .from('attendance')
+            .update({ sign_out: timeStr })
+            .match({ student_id: record.student_id, date: today, tenant_id: tenant_id })
+          
+          if (updateError) {
+            console.error(`Failed to sign out student ${record.student_id} for tenant ${tenant_id}:`, updateError)
+          } else {
+            signedOutCount++
+          }
+        } else {
+          skippedCount++
+        }
+      }
+
+      console.log(`Tenant ${tenant_id} Process Complete: Signed out ${signedOutCount}, Queued ${skippedCount}.`)
+      totalChecked += attendance.length
+      totalSignedOut += signedOutCount
+      totalQueued += skippedCount
+      results.push({ tenant_id, checked: attendance.length, signed_out: signedOutCount, queued: skippedCount })
+    }
 
     return new Response(JSON.stringify({
-      message: `System checked ${attendance.length} records.`,
-      signed_out: signedOutCount,
-      queued: skippedCount,
-      local_time: timeStr
+      message: `Checked ${totalChecked} records across ${allSettings.length} tenants.`,
+      signed_out: totalSignedOut,
+      queued: totalQueued,
+      local_time: timeStr,
+      tenants: results
     }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } })
 
   } catch (err) {
-    console.error("Function Error:", err)
+    console.error("Global Function Error:", err)
     return new Response(JSON.stringify({ error: (err as any).message }), { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } })
   }
 })
