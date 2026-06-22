@@ -1664,6 +1664,7 @@
                         <td data-label="Student">${s.name}</td>
                         <td data-label="Class">${s.class}</td>
                         <td data-label="Sign In">${log.in || '—'}</td>
+                        <td data-label="Signed In By" style="font-size: 0.85rem; color: var(--text-muted);">${log.signed_in_by_name || '—'}</td>
                         <td data-label="Sign Out">${log.out || '—'}</td>
                         <td data-label="Status">
                             ${log.in ? 
@@ -1672,7 +1673,7 @@
                         </td>
                     </tr>
                 `;
-            }).join('') : '<tr><td colspan="5" style="text-align:center; padding:40px; color:var(--text-muted);">No students in this class.</td></tr>';
+            }).join('') : '<tr><td colspan="6" style="text-align:center; padding:40px; color:var(--text-muted);">No students in this class.</td></tr>';
 
             // Only update innerHTML if it has changed to prevent unnecessary repaints
             if (tbodyEl.innerHTML !== newTbodyHtml) {
