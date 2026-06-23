@@ -1427,17 +1427,45 @@
                 };
             });
 
-            // 3. Upsert ALL merged records in ONE request
-            if (mergedRecords.length > 0) {
-                const { error: upsertError } = await supabaseClient
-                    .from('attendance')
-                    .upsert(mergedRecords, { onConflict: 'student_id,date' });
-                
-                if (upsertError) throw upsertError;
+            // 3. Upsert in BATCHES of 10 so one bad record doesn't block all others
+            const BATCH_SIZE = 10;
+            let totalSynced = 0;
+            let totalFailed = 0;
+            const syncedKeys = new Set();
 
-                // Success! Remove the synced items from the pending queue
-                state.pendingSync = state.pendingSync.filter(p => !uniqueItems.find(u => u.studentId === p.studentId && u.date === p.date));
+            for (let i = 0; i < mergedRecords.length; i += BATCH_SIZE) {
+                const batch = mergedRecords.slice(i, i + BATCH_SIZE);
+                try {
+                    const { error: upsertError } = await supabaseClient
+                        .from('attendance')
+                        .upsert(batch, { onConflict: 'student_id,date' });
+                    
+                    if (upsertError) {
+                        console.warn(`Batch ${Math.floor(i/BATCH_SIZE)+1} failed:`, upsertError.message);
+                        totalFailed += batch.length;
+                        // Don't remove these from pending — they'll retry next time
+                    } else {
+                        totalSynced += batch.length;
+                        batch.forEach(r => syncedKeys.add(`${r.student_id}_${r.date}`));
+                    }
+                } catch (batchErr) {
+                    console.warn(`Batch ${Math.floor(i/BATCH_SIZE)+1} error:`, batchErr);
+                    totalFailed += batch.length;
+                }
+            }
+
+            // 4. Remove ONLY successfully synced items from the pending queue
+            if (syncedKeys.size > 0) {
+                state.pendingSync = state.pendingSync.filter(p => !syncedKeys.has(`${p.studentId}_${p.date}`));
                 saveData();
+            }
+
+            // 5. Report results
+            if (totalFailed > 0) {
+                console.warn(`Sync partial: ${totalSynced} synced, ${totalFailed} failed (will retry)`);
+                showToast(`Synced ${totalSynced} records. ${totalFailed} failed and will retry.`, "warning");
+            } else if (totalSynced > 0) {
+                console.log(`Sync complete: ${totalSynced} records synced successfully`);
             }
         } catch (e) {
             console.warn("Background bulk sync failed:", e);
@@ -2962,10 +2990,15 @@
             return;
         }
 
-        if (!confirm("This will trigger the cloud-based staggered signout process. It will check all currently active students and sign them out if their scheduled time has passed. Proceed?")) return;
+        if (!state.tenantId) {
+            showToast("No tenant configured. Please log in first.", "warning");
+            return;
+        }
+
+        if (!confirm(`This will trigger the cloud-based staggered signout process for YOUR SCHOOL ONLY. It will check all currently active students and sign them out if their scheduled time has passed. Proceed?`)) return;
 
         try {
-            showToast("Triggering automatic signout...", "primary");
+            showToast("Triggering automatic signout for your school...", "primary");
             
             const response = await fetch(`${SUPABASE_URL}/functions/v1/staggered-signout`, {
                 method: 'POST',
@@ -2974,13 +3007,17 @@
                     'X-Auto-Signout-Secret': 'Tam360Du180',
                     'Authorization': `Bearer ${SUPABASE_KEY}`
                 },
-                body: JSON.stringify({})
+                body: JSON.stringify({ tenant_id: state.tenantId })
             });
 
             const result = await response.json();
             
             if (response.ok) {
-                showToast(result.message || "Auto-signout triggered successfully", "success");
+                const tenantResult = result.tenants && result.tenants[0];
+                const msg = tenantResult 
+                    ? `Signed out ${tenantResult.signed_out} students, ${tenantResult.queued} still queued.`
+                    : (result.message || "Auto-signout triggered successfully");
+                showToast(msg, "success");
                 await syncAllData();
             } else {
                 throw new Error(result.error || result.message || "Failed to trigger auto-signout");

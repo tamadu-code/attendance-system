@@ -362,3 +362,13 @@ verify_jwt = false
 [functions.create-user]
 verify_jwt = false
 
+[functions.create-tenant]
+verify_jwt = false
+
+[functions.create-student]
+verify_jwt = false
+
+[functions.deactivate-student]
+verify_jwt = false
+
+

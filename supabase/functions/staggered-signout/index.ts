@@ -37,23 +37,48 @@ serve(async (req: Request) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-    // 3. Execution Context
+    // 3. Parse optional tenant_id from request body (for manual single-tenant trigger)
+    let targetTenantId: string | null = null
+    try {
+      const body = await req.json()
+      if (body && body.tenant_id) {
+        targetTenantId = body.tenant_id
+        console.log(`Manual trigger received for specific tenant: ${targetTenantId}`)
+      }
+    } catch (_) {
+      // No body or invalid JSON — process all tenants (cron job default)
+    }
+
+    // 3b. Execution Context
     const nowUtc = new Date()
     const localNow = new Date(nowUtc.getTime() + (1 * 60 * 60 * 1000)) // UTC -> WAT (UTC+1)
     const today = localNow.toISOString().split('T')[0] // WAT date, not UTC
     const isFriday = localNow.getDay() === 5 // 0 = Sun, 5 = Fri, 6 = Sat
     const timeStr = `${String(localNow.getUTCHours()).padStart(2, '0')}:${String(localNow.getUTCMinutes()).padStart(2, '0')}`
-    console.log(`[${nowUtc.toISOString()}] Starting multi-tenant staggered sign-out process for date: ${today} (WAT)`)
+    console.log(`[${nowUtc.toISOString()}] Starting ${targetTenantId ? 'single-tenant' : 'multi-tenant'} staggered sign-out process for date: ${today} (WAT)`)
 
-    // 4. Get Configs for all tenants
-    const { data: allSettings, error: settingsError } = await supabase
+    // 4. Get Configs — filter to specific tenant if provided
+    let settingsQuery = supabase
       .from('settings')
       .select('tenant_id, value')
       .eq('key', 'config')
 
+    if (targetTenantId) {
+      settingsQuery = settingsQuery.eq('tenant_id', targetTenantId)
+    }
+
+    const { data: allSettings, error: settingsError } = await settingsQuery
+
     if (settingsError || !allSettings) {
       console.error("Settings error:", settingsError)
       throw new Error('No configurations found in "settings" table.')
+    }
+
+    if (allSettings.length === 0 && targetTenantId) {
+      return new Response(JSON.stringify({ 
+        error: 'No configuration found for tenant', 
+        tenant_id: targetTenantId 
+      }), { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } })
     }
 
     let totalChecked = 0
