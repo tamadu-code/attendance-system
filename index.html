@@ -1302,6 +1302,40 @@
         }
         updateCutoffDisplay();
         sortStudents();
+        syncNigerianHolidays();
+    }
+
+    async function syncNigerianHolidays() {
+        const d = new Date();
+        const todayStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+        const lastSync = localStorage.getItem('last_attendance_holiday_sync_date');
+        
+        if (lastSync !== todayStr && navigator.onLine) {
+            try {
+                const currentYear = d.getFullYear();
+                const response = await fetch(`https://date.nager.at/api/v3/PublicHolidays/${currentYear}/NG`);
+                if (response.ok) {
+                    const holidaysData = await response.json();
+                    const holidayDates = holidaysData.map(h => h.date);
+                    
+                    if (!state.config.holidays) state.config.holidays = [];
+                    const merged = [...new Set([...state.config.holidays, ...holidayDates])].sort();
+                    
+                    const isChanged = JSON.stringify(state.config.holidays) !== JSON.stringify(merged);
+                    if (isChanged) {
+                        state.config.holidays = merged;
+                        await saveData();
+                        if (state.ui.currentMode === 'admin' && state.ui.adminSection === 'settings') {
+                            renderAdmin();
+                        }
+                    }
+                    localStorage.setItem('last_attendance_holiday_sync_date', todayStr);
+                    console.log("[AutoHolidays] Attendance System holidays synchronized successfully:", merged);
+                }
+            } catch (err) {
+                console.warn("[AutoHolidays] Failed to sync holidays:", err.message);
+            }
+        }
     }
 
     function initDemoData() {
